@@ -1,0 +1,514 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #333;
+    height: 100vh;
+    overflow: hidden;
+}
+
+header {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    padding: 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+header h1 {
+    color: white;
+    font-size: 1.8rem;
+    font-weight: 300;
+}
+
+.controls {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.controls input {
+    padding: 0.5rem;
+    border: none;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.9);
+    color: #333;
+    outline: none;
+}
+
+.controls button {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 20px;
+    background: #4CAF50;
+    color: white;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.controls button:hover {
+    background: #45a049;
+}
+
+main {
+    display: flex;
+    height: calc(100vh - 80px);
+}
+
+#mindmap-container {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+}
+
+#mindmap-canvas {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    background: radial-gradient(circle at center, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+    background-size: 50px 50px;
+}
+
+.mindmap-node {
+    position: absolute;
+    background: linear-gradient(135deg, #fff 0%, #f8f9fa 100%);
+    border: 2px solid #e9ecef;
+    border-radius: 15px;
+    padding: 1rem;
+    min-width: 150px;
+    max-width: 200px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    z-index: 10;
+}
+
+.mindmap-node:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+    border-color: #007bff;
+}
+
+.mindmap-node.active {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    color: white;
+    border-color: #0056b3;
+}
+
+.mindmap-node h4 {
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.mindmap-node .message-count {
+    font-size: 0.7rem;
+    opacity: 0.7;
+}
+
+.mindmap-connection {
+    position: absolute;
+    background: #6c757d;
+    height: 4px;
+    transform-origin: left center;
+    z-index: 1;
+    opacity: 0.8;
+    border-radius: 2px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.mindmap-connection.active {
+    background: #007bff;
+    opacity: 1;
+    height: 5px;
+}
+
+#chat-panel {
+    width: 400px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border-left: 1px solid rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.3s ease;
+}
+
+#chat-panel.hidden {
+    transform: translateX(100%);
+}
+
+#chat-header {
+    padding: 1rem;
+    background: rgba(0, 123, 255, 0.1);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+#chat-header h3 {
+    color: #007bff;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+#closeChatBtn {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: #6c757d;
+    cursor: pointer;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background 0.3s;
+}
+
+#closeChatBtn:hover {
+    background: rgba(0, 0, 0, 0.1);
+}
+
+#chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem;
+    background: white;
+}
+
+.message {
+    margin-bottom: 1rem;
+    padding: 0.8rem;
+    border-radius: 10px;
+    max-width: 80%;
+    word-wrap: break-word;
+}
+
+.message.own {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    color: white;
+    margin-left: auto;
+}
+
+.message.other {
+    background: #f8f9fa;
+    color: #333;
+    border: 1px solid #e9ecef;
+}
+
+.message .username {
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: 0.3rem;
+    opacity: 0.8;
+}
+
+.message .content {
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.message .timestamp {
+    font-size: 0.7rem;
+    opacity: 0.6;
+    margin-top: 0.3rem;
+}
+
+#chat-input-area {
+    padding: 1rem;
+    background: rgba(248, 249, 250, 0.9);
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+#messageInput {
+    width: 100%;
+    padding: 0.8rem;
+    border: 1px solid #e9ecef;
+    border-radius: 20px;
+    outline: none;
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+}
+
+#messageInput:focus {
+    border-color: #007bff;
+}
+
+#chat-input-area button {
+    padding: 0.6rem 1rem;
+    border: none;
+    border-radius: 15px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    margin-right: 0.5rem;
+    transition: all 0.3s;
+}
+
+#sendBtn {
+    background: #007bff;
+    color: white;
+}
+
+#sendBtn:hover {
+    background: #0056b3;
+}
+
+#branchBtn {
+    background: #28a745;
+    color: white;
+}
+
+#branchBtn:hover {
+    background: #1e7e34;
+}
+
+.mindmap-node.root {
+    background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+    color: white;
+    border-color: #1e7e34;
+    font-weight: 600;
+}
+
+@keyframes nodeAppear {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.mindmap-node {
+    animation: nodeAppear 0.3s ease-out;
+}
+
+/* スマホ用リスト形式レイアウト */
+@media (max-width: 768px) {
+    html {
+        height: 100%;
+    }
+    
+    body {
+        height: 100%;
+        min-height: 100vh;
+        min-height: calc(var(--vh, 1vh) * 100);
+    }
+    
+    main {
+        flex-direction: column;
+        min-height: 100vh;
+        min-height: calc(var(--vh, 1vh) * 100);
+        margin-top: 0;
+        position: relative;
+    }
+    
+    #mindmap-container {
+        position: absolute;
+        top: 100px; /* ヘッダー直下から開始 */
+        left: 0;
+        right: 0;
+        bottom: 0;
+        padding: 1rem;
+        background: #f8f9fa;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    #mindmap-canvas {
+        display: flex;
+        flex-direction: column;
+        gap: 0.8rem;
+        position: static;
+        width: 100%;
+        height: auto;
+    }
+    
+    .mindmap-node {
+        position: static !important;
+        width: 100% !important;
+        max-width: none !important;
+        min-width: none !important;
+        left: auto !important;
+        top: auto !important;
+        transform: none !important;
+        margin: 0;
+        padding: 1rem;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        background: white;
+        border: 1px solid #e9ecef;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        transition: all 0.3s ease;
+    }
+    
+    /* 階層表示用スタイル */
+    .mindmap-node[data-level="0"] {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        color: white;
+        border-color: #28a745;
+        font-weight: 600;
+    }
+    
+    .mindmap-node[data-level="1"] {
+        background: #f8f9ff;
+        border-left: 4px solid #007bff;
+        margin-left: 20px;
+    }
+    
+    .mindmap-node[data-level="2"] {
+        background: #fff8f0;
+        border-left: 4px solid #fd7e14;
+        margin-left: 40px;
+    }
+    
+    .mindmap-node[data-level="3"] {
+        background: #f0fff8;
+        border-left: 4px solid #20c997;
+        margin-left: 60px;
+    }
+    
+    .mindmap-node[data-level="4"] {
+        background: #fff0f8;
+        border-left: 4px solid #e83e8c;
+        margin-left: 80px;
+    }
+    
+    /* より深い階層は汎用スタイル */
+    .mindmap-node[data-level]:not([data-level="0"]):not([data-level="1"]):not([data-level="2"]):not([data-level="3"]):not([data-level="4"]) {
+        background: #f8f9fa;
+        border-left: 3px solid #6c757d;
+    }
+    
+    .mindmap-node h4 {
+        font-size: 1rem;
+        margin: 0;
+        flex: 1;
+    }
+    
+    .mindmap-node .message-count {
+        font-size: 0.8rem;
+        color: #6c757d;
+        margin-left: 1rem;
+    }
+    
+    .mindmap-node.root {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        color: white;
+        border-color: #28a745;
+    }
+    
+    .mindmap-node.active {
+        background: linear-gradient(135deg, #007bff 0%, #6610f2 100%);
+        color: white;
+        border-color: #007bff;
+    }
+    
+    .mindmap-connection {
+        display: none;
+    }
+    
+    #chat-panel {
+        width: 100%;
+        height: 60vh;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 1000;
+    }
+    
+    #chat-panel.hidden {
+        transform: translateY(100%);
+    }
+    
+    header {
+        padding: 0.8rem;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 100;
+        display: flex;
+        flex-direction: column;
+        gap: 0.8rem;
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    header h1 {
+        font-size: 1.1rem;
+        margin: 0;
+        text-align: center;
+        color: white;
+        font-weight: 300;
+    }
+    
+    .controls {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+    }
+    
+    .controls input {
+        flex: 1;
+        font-size: 16px;
+        padding: 0.8rem;
+        border-radius: 8px;
+        border: 1px solid #ddd;
+    }
+    
+    .controls input:disabled {
+        background: #f8f9fa;
+        color: #6c757d;
+        border-color: #e9ecef;
+    }
+    
+    .controls button {
+        font-size: 1rem;
+        padding: 0.8rem 1rem;
+        border-radius: 8px;
+        white-space: nowrap;
+    }
+    
+    /* チャット関連のスタイル調整 */
+    #chat-header {
+        padding: 1rem;
+    }
+    
+    #chat-messages {
+        padding: 1rem;
+        padding-bottom: 2rem;
+    }
+    
+    #chat-input-area {
+        padding: 1rem;
+    }
+    
+    #messageInput {
+        font-size: 16px;
+        padding: 0.8rem;
+        margin-bottom: 0.8rem;
+    }
+    
+    #chat-input-area button {
+        padding: 0.8rem 1rem;
+        font-size: 0.9rem;
+        margin-right: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+}

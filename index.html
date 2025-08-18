@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StreemChat - マインドマップチャット</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>StreemChat</h1>
+            <div class="controls">
+                <input type="text" id="username" placeholder="ユーザー名" />
+                <button id="connectBtn">接続</button>
+            </div>
+        </header>
+        
+        <main>
+            <div id="mindmap-container">
+                <div id="mindmap-canvas">
+                    <!-- マインドマップのノードがここに動的に追加される -->
+                </div>
+            </div>
+            
+            <div id="chat-panel" class="hidden">
+                <div id="chat-header">
+                    <h3 id="chat-topic">話題</h3>
+                    <button id="closeChatBtn">×</button>
+                </div>
+                <div id="chat-messages"></div>
+                <div id="chat-input-area">
+                    <input type="text" id="messageInput" placeholder="メッセージを入力..." />
+                    <button id="sendBtn">送信</button>
+                    <button id="branchBtn">新しい話題として分岐</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    
+    <!-- アプリケーションスクリプト -->
+    <script src="firebase-config.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
