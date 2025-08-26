@@ -12,8 +12,8 @@ class StreemChat {
         this.messageUnsubscribes = new Map();
         this.allMessagesUnsubscribe = null; // 全メッセージの監視用
         this.usedPositions = []; // 使用済み位置を記録
-        this.isChronologicalSort = false; // 時系列順表示フラグ
-        this.selectedNodeId = null; // 時系列順表示で選択されたノードID
+        this.isListView = false; // 一覧表示フラグ
+        this.selectedNodeId = null; // 一覧表示で選択されたノードID
         
         this.initializeElements();
         this.setupEventListeners();
@@ -138,8 +138,8 @@ class StreemChat {
         
         this.elements.nodeSelector.addEventListener('change', (e) => {
             this.selectedNodeId = e.target.value || null;
-            if (this.isChronologicalSort) {
-                this.refreshChronologicalDisplay();
+            if (this.isListView) {
+                this.refreshListDisplay();
             }
         });
     }
@@ -785,18 +785,18 @@ class StreemChat {
     }
 
     createHierarchicalNodes(allNodes) {
-        console.log(`Creating hierarchical nodes using ${this.isChronologicalSort ? 'chronological' : 'hierarchyLevel'} sort`);
+        console.log(`Creating display using ${this.isListView ? 'list view' : 'node view'}`);
         
-        if (this.isChronologicalSort) {
-            // 時系列順表示: ノードとメッセージを統合して時系列順で表示
-            this.createChronologicalDisplay(allNodes);
+        if (this.isListView) {
+            // 一覧表示: 特定ノード配下のメッセージを時系列順で表示
+            this.createListDisplay(allNodes);
         } else {
-            // 階層順表示: 従来の階層表示
-            this.createHierarchicalDisplay(allNodes);
+            // ノード表示: 従来の階層表示
+            this.createNodeDisplay(allNodes);
         }
     }
     
-    createHierarchicalDisplay(allNodes) {
+    createNodeDisplay(allNodes) {
         // hierarchyLevelでソート（0が最初、1, 2, 3...の順）
         const sortedNodes = Array.from(allNodes.entries()).sort((a, b) => {
             const levelA = a[1].hierarchyLevel || 0;
@@ -818,7 +818,7 @@ class StreemChat {
         });
     }
     
-    createChronologicalDisplay(allNodes) {
+    createListDisplay(allNodes) {
         if (!this.selectedNodeId) {
             // ノードが選択されていない場合はメッセージを表示
             this.elements.mindmapCanvas.innerHTML = '<div style="text-align: center; padding: 50px; color: #6c757d; font-size: 1.1rem;">ノードを選択してください</div>';
@@ -853,7 +853,7 @@ class StreemChat {
         const selectedNodeData = allNodes.get(this.selectedNodeId);
         const selectedNodeTitle = selectedNodeData ? selectedNodeData.title : 'Unknown';
         
-        console.log(`Creating chronological display for "${selectedNodeTitle}" with ${filteredMessages.length} messages from ${descendantNodeIds.length} descendant nodes`);
+        console.log(`Creating list display for "${selectedNodeTitle}" with ${filteredMessages.length} messages from ${descendantNodeIds.length} descendant nodes`);
         
         if (filteredMessages.length === 0) {
             this.elements.mindmapCanvas.innerHTML = `<div style="text-align: center; padding: 50px; color: #6c757d; font-size: 1.1rem;">"${selectedNodeTitle}"とその配下にはメッセージがありません</div>`;
@@ -880,7 +880,7 @@ class StreemChat {
         
         // 時系列順でメッセージのみを表示
         filteredMessages.forEach((message, index) => {
-            this.createChronologicalMessageElement(message.id, message.data, message.nodeId, index, allNodes);
+            this.createListMessageElement(message.id, message.data, message.nodeId, index, allNodes);
         });
     }
     
@@ -947,7 +947,7 @@ class StreemChat {
         console.log(`✓ Node created: "${nodeData.title}" at level ${level} with ${indentPx}px indent`);
     }
     
-    createChronologicalNodeElement(nodeId, nodeData, index) {
+    createListNodeElement(nodeId, nodeData, index) {
         const nodeElement = document.createElement('div');
         nodeElement.className = 'chronological-node';
         nodeElement.dataset.nodeId = nodeId;
@@ -983,10 +983,10 @@ class StreemChat {
         this.elements.mindmapCanvas.appendChild(nodeElement);
         this.nodes.set(nodeId, { element: nodeElement, data: nodeData });
         
-        console.log(`✓ Chronological node created: "${nodeData.title}" at position ${index}`);
+        console.log(`✓ List node created: "${nodeData.title}" at position ${index}`);
     }
     
-    createChronologicalMessageElement(messageId, messageData, nodeId, index, allNodes) {
+    createListMessageElement(messageId, messageData, nodeId, index, allNodes) {
         const messageElement = document.createElement('div');
         messageElement.className = 'chronological-message';
         messageElement.dataset.messageId = messageId;
@@ -1030,7 +1030,7 @@ class StreemChat {
         
         this.elements.mindmapCanvas.appendChild(messageElement);
         
-        console.log(`✓ Chronological message created: "${messageData.content.substring(0, 30)}..." in node "${parentTitle}"`);
+        console.log(`✓ List message created: "${messageData.content.substring(0, 30)}..." in node "${parentTitle}"`);
     }
     
     updateNodeSelector(allNodes) {
@@ -1077,8 +1077,8 @@ class StreemChat {
         return descendants;
     }
     
-    refreshChronologicalDisplay() {
-        if (!this.isChronologicalSort) return;
+    refreshListDisplay() {
+        if (!this.isListView) return;
         
         // 既存の表示をクリア
         this.elements.mindmapCanvas.innerHTML = '';
@@ -1093,20 +1093,20 @@ class StreemChat {
                 const nodeId = doc.id;
                 allNodes.set(nodeId, nodeData);
             });
-            this.createChronologicalDisplay(allNodes);
+            this.createListDisplay(allNodes);
         });
     }
 
     toggleSortMode() {
-        this.isChronologicalSort = !this.isChronologicalSort;
+        this.isListView = !this.isListView;
         
         // ボタンテキストとセレクタの表示を更新
-        if (this.isChronologicalSort) {
-            this.elements.sortToggleBtn.textContent = '階層順で表示';
+        if (this.isListView) {
+            this.elements.sortToggleBtn.textContent = 'node表示';
             this.elements.mindmapCanvas.classList.add('chronological-view');
             this.elements.nodeSelector.classList.remove('hidden');
         } else {
-            this.elements.sortToggleBtn.textContent = '時系列順で表示';
+            this.elements.sortToggleBtn.textContent = '一覧表示';
             this.elements.mindmapCanvas.classList.remove('chronological-view');
             this.elements.nodeSelector.classList.add('hidden');
             this.selectedNodeId = null;
@@ -1150,7 +1150,7 @@ class StreemChat {
             });
         }
         
-        console.log(`Sort mode toggled: ${this.isChronologicalSort ? 'Chronological' : 'Hierarchical'}`);
+        console.log(`View mode toggled: ${this.isListView ? 'List View' : 'Node View'}`);
     }
 
     setupViewportFix() {
