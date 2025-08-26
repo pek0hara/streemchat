@@ -1100,6 +1100,12 @@ class StreemChat {
     toggleSortMode() {
         this.isListView = !this.isListView;
         
+        // 既存の表示をクリア
+        this.elements.mindmapCanvas.innerHTML = '';
+        this.nodes.clear();
+        this.connections.clear();
+        this.usedPositions = [];
+        
         // ボタンテキストとセレクタの表示を更新
         if (this.isListView) {
             this.elements.sortToggleBtn.textContent = 'node表示';
@@ -1112,43 +1118,17 @@ class StreemChat {
             this.selectedNodeId = null;
         }
         
-        // スマホでのみ再描画（PCの場合は階層表示を使わない）
-        if (window.innerWidth <= 768) {
-            // 既存のノードをクリア
-            this.elements.mindmapCanvas.innerHTML = '';
-            this.nodes.clear();
-            this.usedPositions = [];
-            
-            // loadNodesの処理を再実行して表示を更新
-            const db = getDB();
-            db.collection('nodes').get().then((snapshot) => {
-                const allNodes = new Map();
-                snapshot.forEach((doc) => {
-                    const nodeData = doc.data();
-                    const nodeId = doc.id;
-                    allNodes.set(nodeId, nodeData);
-                });
-                this.createHierarchicalNodes(allNodes);
+        // 表示モードに応じて再描画
+        const db = getDB();
+        db.collection('nodes').get().then((snapshot) => {
+            const allNodes = new Map();
+            snapshot.forEach((doc) => {
+                const nodeData = doc.data();
+                const nodeId = doc.id;
+                allNodes.set(nodeId, nodeData);
             });
-        } else {
-            // PCでも時系列表示を有効にする
-            // 既存のノードをクリア
-            this.elements.mindmapCanvas.innerHTML = '';
-            this.nodes.clear();
-            this.connections.clear();
-            
-            // loadNodesの処理を再実行して表示を更新
-            const db = getDB();
-            db.collection('nodes').get().then((snapshot) => {
-                const allNodes = new Map();
-                snapshot.forEach((doc) => {
-                    const nodeData = doc.data();
-                    const nodeId = doc.id;
-                    allNodes.set(nodeId, nodeData);
-                });
-                this.createHierarchicalNodes(allNodes);
-            });
-        }
+            this.createHierarchicalNodes(allNodes);
+        });
         
         console.log(`View mode toggled: ${this.isListView ? 'List View' : 'Node View'}`);
     }
