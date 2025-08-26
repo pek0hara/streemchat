@@ -12,7 +12,7 @@ class StreemChat {
         this.messageUnsubscribes = new Map();
         this.allMessagesUnsubscribe = null; // 全メッセージの監視用
         this.usedPositions = []; // 使用済み位置を記録
-        this.isListView = false; // 一覧表示フラグ
+        this.isListView = false; // 一覧表示フラグ（デフォルトは従来の階層表示）
         this.selectedNodeId = null; // 一覧表示で選択されたノードID
         
         this.initializeElements();
@@ -134,7 +134,7 @@ class StreemChat {
             }
         });
         
-        this.elements.sortToggleBtn.addEventListener('click', () => this.toggleSortMode());
+        this.elements.sortToggleBtn.addEventListener('click', () => this.toggleViewMode());
         
         this.elements.nodeSelector.addEventListener('change', (e) => {
             this.selectedNodeId = e.target.value || null;
@@ -264,25 +264,13 @@ class StreemChat {
             // ノードセレクタを更新
             this.updateNodeSelector(allNodes);
             
-            // スマホの場合は階層表示
-            if (window.innerWidth <= 768) {
-                this.elements.mindmapCanvas.innerHTML = '';
-                this.nodes.clear();
-                this.usedPositions = [];
-                
-                // 階層順にノードを作成・配置
-                this.createHierarchicalNodes(allNodes);
-            } else {
-                // PCの場合は従来通り
-                snapshot.forEach((doc) => {
-                    const nodeData = doc.data();
-                    const nodeId = doc.id;
-                    
-                    if (!this.nodes.has(nodeId)) {
-                        this.createNodeElement(nodeId, nodeData);
-                    }
-                });
-            }
+            // 表示をクリア
+            this.elements.mindmapCanvas.innerHTML = '';
+            this.nodes.clear();
+            this.usedPositions = [];
+            
+            // 階層表示または一覧表示
+            this.createHierarchicalNodes(allNodes);
         });
     }
     
@@ -785,18 +773,16 @@ class StreemChat {
     }
 
     createHierarchicalNodes(allNodes) {
-        console.log(`Creating display using ${this.isListView ? 'list view' : 'node view'}`);
-        
         if (this.isListView) {
             // 一覧表示: 特定ノード配下のメッセージを時系列順で表示
             this.createListDisplay(allNodes);
         } else {
-            // ノード表示: 従来の階層表示
-            this.createNodeDisplay(allNodes);
+            // 従来の階層表示（スマホ用）
+            this.createMobileHierarchicalDisplay(allNodes);
         }
     }
     
-    createNodeDisplay(allNodes) {
+    createMobileHierarchicalDisplay(allNodes) {
         // hierarchyLevelでソート（0が最初、1, 2, 3...の順）
         const sortedNodes = Array.from(allNodes.entries()).sort((a, b) => {
             const levelA = a[1].hierarchyLevel || 0;
@@ -1097,7 +1083,7 @@ class StreemChat {
         });
     }
 
-    toggleSortMode() {
+    toggleViewMode() {
         this.isListView = !this.isListView;
         
         // 既存の表示をクリア
@@ -1108,7 +1094,7 @@ class StreemChat {
         
         // ボタンテキストとセレクタの表示を更新
         if (this.isListView) {
-            this.elements.sortToggleBtn.textContent = 'node表示';
+            this.elements.sortToggleBtn.textContent = '階層表示';
             this.elements.mindmapCanvas.classList.add('chronological-view');
             this.elements.nodeSelector.classList.remove('hidden');
         } else {
@@ -1130,7 +1116,7 @@ class StreemChat {
             this.createHierarchicalNodes(allNodes);
         });
         
-        console.log(`View mode toggled: ${this.isListView ? 'List View' : 'Node View'}`);
+        console.log(`View mode toggled: ${this.isListView ? 'List View' : 'Hierarchical View'}`);
     }
 
     setupViewportFix() {
