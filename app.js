@@ -30,6 +30,7 @@ class StreemChat {
             chatPanel: document.getElementById('chat-panel'),
             chatTopic: document.getElementById('chat-topic'),
             closeChatBtn: document.getElementById('closeChatBtn'),
+            renameChatBtn: document.getElementById('renameChatBtn'),
             chatMessages: document.getElementById('chat-messages'),
             messageInput: document.getElementById('messageInput'),
             sendBtn: document.getElementById('sendBtn'),
@@ -117,6 +118,7 @@ class StreemChat {
     setupEventListeners() {
         this.elements.connectBtn.addEventListener('click', () => this.connect());
         this.elements.closeChatBtn.addEventListener('click', () => this.closeChat());
+        this.elements.renameChatBtn.addEventListener('click', () => this.renameChat());
         this.elements.sendBtn.addEventListener('click', () => this.sendMessage());
         this.elements.branchBtn.addEventListener('click', () => this.createBranch());
         
@@ -133,8 +135,34 @@ class StreemChat {
         });
         
         this.elements.nodeSelector.addEventListener('change', (e) => {
-            this.selectedNodeId = e.target.value || null;
-            this.refreshListDisplay();
+            const nodeId = e.target.value;
+
+            // If a real node is selected
+            if (nodeId) {
+                this.selectedNodeId = nodeId;
+                const node = this.nodes.get(nodeId);
+                if (node && node.data) {
+                    this.openChat(nodeId, node.data.title);
+                    this.refreshListDisplay();
+                }
+            }
+            // If the blank '---' option is selected
+            else {
+                // Find the root node to display its list
+                let rootNodeId = null;
+                for (const [id, node] of this.nodes.entries()) {
+                    if (node.data.isRoot) {
+                        rootNodeId = id;
+                        break;
+                    }
+                }
+
+                // Set the selected ID to the root node for the list display
+                this.selectedNodeId = rootNodeId;
+                
+                this.closeChat();
+                this.refreshListDisplay();
+            }
         });
     }
     
@@ -258,6 +286,17 @@ class StreemChat {
             
             // ノードセレクタを更新
             this.updateNodeSelector(allNodes);
+
+            // デフォルトの表示ノードを設定（初期ロード時）
+            if (!this.selectedNodeId) {
+                let rootNodeId = null;
+                allNodes.forEach((nodeData, nodeId) => {
+                    if (nodeData.isRoot) {
+                        rootNodeId = nodeId;
+                    }
+                });
+                this.selectedNodeId = rootNodeId;
+            }
             
             // ノードデータを保持（分岐機能のため）
             this.nodes.clear();
@@ -361,6 +400,11 @@ class StreemChat {
         this.elements.chatTopic.textContent = title;
         this.elements.chatPanel.classList.remove('hidden');
         
+        // リネームボタンの表示制御（メインチャット以外のみ表示）
+        const nodeData = this.nodes.get(nodeId);
+        const isRootNode = nodeData && nodeData.data && nodeData.data.isRoot;
+        this.elements.renameChatBtn.style.display = isRootNode ? 'none' : 'inline-block';
+        
         document.querySelectorAll('.mindmap-node').forEach(node => {
             node.classList.remove('active');
         });
@@ -433,13 +477,33 @@ class StreemChat {
         
         const displayName = messageData.displayName || messageData.username;
         
+        // 表示名を分割（username#IDの形式）
+        const parts = displayName.split('#');
+        const username = parts[0];
+        const userId = parts.length > 1 ? parts[1] : '';
+        
+        const usernameHtml = userId ? 
+            `${username}<span class="user-id">#${userId}</span>` : 
+            username;
+        
+        // メッセージ全体のコンテナを作成
+        const messageContainer = document.createElement('div');
+        messageContainer.className = `message-container ${isOwnMessage ? 'own' : ''}`;
+        
         messageElement.innerHTML = `
-            <div class="username">${displayName}</div>
+            <div class="username">${usernameHtml}</div>
             <div class="content">${messageData.content}</div>
-            <div class="timestamp">${timestamp}</div>
         `;
         
-        this.elements.chatMessages.appendChild(messageElement);
+        // 時刻表示を外側に配置
+        const timestampElement = document.createElement('div');
+        timestampElement.className = 'message-timestamp';
+        timestampElement.textContent = timestamp;
+        
+        messageContainer.appendChild(messageElement);
+        messageContainer.appendChild(timestampElement);
+        
+        this.elements.chatMessages.appendChild(messageContainer);
     }
     
     async sendMessage() {
@@ -571,23 +635,62 @@ class StreemChat {
             console.log(`Creating branch: "${branchTitle}" at hierarchy level ${newHierarchyLevel} (parent level: ${parentHierarchyLevel})`);
             console.log('Branch data:', branchData);
             
-            console.log('Adding branch message to current node...');
-            await db.collection('messages').add({
-                nodeId: this.currentNodeId,
-                username: this.currentUser,
-                displayName: this.currentDisplayName,
-                content: `🌿 新しい話題「${branchTitle}」を作成しました`,
-                createdAt: new Date(),
-                isBranchMessage: true
-            });
-            console.log('Branch message added successfully');
-            
             console.log('Adding new node to database...');
             const docRef = await db.collection('nodes').add(branchData);
             console.log('Branch created with ID:', docRef.id);
             
+            console.log('Adding initial message to new branch node...');
+            await db.collection('messages').add({
+                nodeId: docRef.id,
+                username: this.currentUser,
+                displayName: this.currentDisplayName,
+                content: `🌿 「${parentNode.data.title}」から新しい話題として分岐しました`,
+                createdAt: new Date(),
+                isBranchMessage: true
+            });
+            console.log('Initial branch message added successfully');
+            
         } catch (error) {
             console.error('Error creating branch:', error);
+        }
+    }
+    
+    async renameChat() {
+        if (!this.currentNodeId) return;
+        
+        const nodeData = this.nodes.get(this.currentNodeId);
+        if (!nodeData) return;
+        
+        // メインチャットは変更不可
+        if (nodeData.data.isRoot) {
+            alert('メインチャットの名前は変更できません。');
+            return;
+        }
+        
+        const currentTitle = nodeData.data.title;
+        const newTitle = prompt('新しいチャット名を入力してください:', currentTitle);
+        
+        if (!newTitle || newTitle.trim() === '' || newTitle === currentTitle) return;
+        
+        const trimmedTitle = newTitle.trim();
+        
+        try {
+            const db = getDB();
+            console.log(`Renaming node ${this.currentNodeId} from "${currentTitle}" to "${trimmedTitle}"`);
+            
+            await db.collection('nodes').doc(this.currentNodeId).update({
+                title: trimmedTitle,
+                lastActivity: new Date()
+            });
+            
+            console.log('Node renamed successfully');
+            
+            // UI即座に更新
+            this.elements.chatTopic.textContent = trimmedTitle;
+            
+        } catch (error) {
+            console.error('Error renaming chat:', error);
+            alert('チャット名の変更に失敗しました。');
         }
     }
     
@@ -707,7 +810,7 @@ class StreemChat {
         });
         
         // 時系列順でソート
-        filteredMessages.sort((a, b) => a.createdAt - b.createdAt);
+        filteredMessages.sort((a, b) => b.createdAt - a.createdAt);
         
         const selectedNodeData = allNodes.get(this.selectedNodeId);
         const selectedNodeTitle = selectedNodeData ? selectedNodeData.title : 'Unknown';
@@ -719,23 +822,7 @@ class StreemChat {
             return;
         }
         
-        // 選択されたノードの情報を表示
-        const headerElement = document.createElement('div');
-        headerElement.style.cssText = `
-            background: linear-gradient(135deg, #007bff 0%, #6c5ce7 100%);
-            color: white;
-            padding: 20px;
-            margin-bottom: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
-        `;
-        headerElement.innerHTML = `
-            <h3 style="margin: 0; font-size: 1.3rem;">📁 ${selectedNodeTitle}</h3>
-            <div style="margin-top: 8px; opacity: 0.9; font-size: 0.95rem;">
-                配下 ${descendantNodeIds.length} ノードから ${filteredMessages.length} メッセージを表示
-            </div>
-        `;
-        this.elements.mindmapCanvas.appendChild(headerElement);
+        // ヘッダー表示は削除（ノード選択で確認できるため不要）
         
         // 時系列順でメッセージのみを表示
         filteredMessages.forEach((message, index) => {
@@ -809,10 +896,19 @@ class StreemChat {
         
         const displayName = messageData.displayName || messageData.username;
         
+        // 表示名を分割（username#IDの形式）
+        const parts = displayName.split('#');
+        const username = parts[0];
+        const userId = parts.length > 1 ? parts[1] : '';
+        
+        const usernameHtml = userId ? 
+            `${username}<span class="user-id">#${userId}</span>` : 
+            username;
+        
         messageElement.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
                 <div style="display: flex; flex-direction: column;">
-                    <strong style="color: #495057; font-size: 0.9rem;">${displayName}</strong>
+                    <strong style="color: #495057; font-size: 0.9rem;">${usernameHtml}</strong>
                     <small style="color: #6c757d; font-size: 0.8rem;">📁 ${parentTitle}</small>
                 </div>
                 <small style="color: #6c757d;">${timestamp}</small>
@@ -833,29 +929,24 @@ class StreemChat {
     updateNodeSelector(allNodes) {
         // セレクタのオプションをクリア
         this.elements.nodeSelector.innerHTML = '';
+
+        // デフォルトの選択肢（空白）を追加
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = '---';
+        placeholder.selected = true;
+        this.elements.nodeSelector.appendChild(placeholder);
         
         // 階層構造順でソートしてオプションを追加
         const hierarchicalNodes = this.buildHierarchicalNodeList(allNodes);
         
-        let rootNodeId = null;
         hierarchicalNodes.forEach(({ nodeId, nodeData, depth }) => {
             const option = document.createElement('option');
             option.value = nodeId;
             const indent = '　'.repeat(depth);
             option.textContent = `${indent}${nodeData.title}`;
             this.elements.nodeSelector.appendChild(option);
-            
-            // ルートノードを記録
-            if (nodeData.isRoot) {
-                rootNodeId = nodeId;
-            }
         });
-        
-        // デフォルトでメインチャット（ルートノード）を選択
-        if (rootNodeId && !this.selectedNodeId) {
-            this.elements.nodeSelector.value = rootNodeId;
-            this.selectedNodeId = rootNodeId;
-        }
     }
     
     buildHierarchicalNodeList(allNodes) {
@@ -1017,7 +1108,35 @@ class StreemChat {
             } while (!nodesSnapshot.empty);
             
             console.log(`All data deleted: ${messagesDeleted} messages, ${nodesDeleted} nodes`);
-            alert(`全てのデータを削除しました\nメッセージ: ${messagesDeleted}件\nノード: ${nodesDeleted}件`);
+            
+            // メインチャットの再作成
+            console.log('Creating new root node...');
+            const rootNodeData = {
+                title: 'メインチャット',
+                x: Math.max(50, (window.innerWidth - 200) / 2),
+                y: Math.max(50, (window.innerHeight * 0.6 - 100) / 2),
+                isRoot: true,
+                parentId: null,
+                hierarchyLevel: 0,
+                createdAt: new Date(),
+                lastActivity: new Date()
+            };
+            
+            const rootDocRef = await db.collection('nodes').add(rootNodeData);
+            console.log('Root node created with ID:', rootDocRef.id);
+            
+            // 初期メッセージをメインチャットに追加
+            console.log('Adding initial message to main chat...');
+            await db.collection('messages').add({
+                nodeId: rootDocRef.id,
+                username: 'システム',
+                displayName: 'システム',
+                content: '🚀 StreemChatへようこそ！チャットを始めましょう。',
+                createdAt: new Date(),
+                isSystemMessage: true
+            });
+            
+            alert(`全てのデータを削除しました\nメッセージ: ${messagesDeleted}件\nノード: ${nodesDeleted}件\n\n新しいメインチャットを作成しました。`);
             this.elements.username.value = '';
             location.reload();
             
