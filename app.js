@@ -16,7 +16,7 @@ class StreemChat {
         
         this.initializeElements();
         this.setupEventListeners();
-        this.initializeRootNode();
+        // this.initializeRootNode(); // コンストラクタでは呼ばない
         this.setupViewportFix();
         console.log('StreemChat initialization complete');
     }
@@ -163,9 +163,9 @@ class StreemChat {
         this.elements.connectBtn.disabled = true;
         
         this.cleanupOldNodes();
-        this.initializeRootNode();
-        this.loadNodes();
-        this.loadAllMessages(); // 全メッセージを一括取得
+        this.initializeRootNode(); // 有効化
+        this.loadAllMessages(); // 先にメッセージを読み込む
+        this.loadNodes(); // その後ノードを読み込む
         
         setTimeout(() => {
             this.elements.connectBtn.textContent = '接続済み';
@@ -174,6 +174,7 @@ class StreemChat {
     }
     
     async initializeRootNode() {
+        console.log('initializeRootNode called');
         const db = getDB();
         
         try {
@@ -328,7 +329,20 @@ class StreemChat {
                     }
                 });
                 
-                console.log(`Total messages cached: ${Array.from(this.messages.values()).reduce((total, nodeMessages) => total + nodeMessages.size, 0)}`);
+                const totalMessages = Array.from(this.messages.values()).reduce((total, nodeMessages) => total + nodeMessages.size, 0);
+                console.log(`Total messages cached: ${totalMessages}`);
+                
+                // メッセージ読み込み完了後、選択中のノードがあれば表示を更新
+                console.log('Checking if should refresh display, selectedNodeId:', this.selectedNodeId);
+                if (this.selectedNodeId) {
+                    console.log('Refreshing list display after messages loaded');
+                    // 少し遅延させて確実に更新
+                    setTimeout(() => {
+                        this.refreshListDisplay();
+                    }, 100);
+                } else {
+                    console.log('No selectedNodeId, skipping refresh');
+                }
             });
     }
     
@@ -561,6 +575,10 @@ class StreemChat {
     
     
     async cleanupOldNodes() {
+        // Firestoreインデックスエラーを避けるため、cleanup処理を無効化
+        console.log('Cleanup skipped to avoid Firestore index issues');
+        return;
+        
         const db = getDB();
         const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
         
@@ -785,7 +803,7 @@ class StreemChat {
     
     updateNodeSelector(allNodes) {
         // セレクタのオプションをクリア
-        this.elements.nodeSelector.innerHTML = '<option value="">ノードを選択...</option>';
+        this.elements.nodeSelector.innerHTML = '';
         
         // 階層順でソートしてオプションを追加
         const sortedNodes = Array.from(allNodes.entries()).sort((a, b) => {
@@ -799,13 +817,25 @@ class StreemChat {
             return timeA - timeB;
         });
         
+        let rootNodeId = null;
         sortedNodes.forEach(([nodeId, nodeData]) => {
             const option = document.createElement('option');
             option.value = nodeId;
             const indent = '　'.repeat(nodeData.hierarchyLevel || 0);
             option.textContent = `${indent}${nodeData.title}`;
             this.elements.nodeSelector.appendChild(option);
+            
+            // ルートノードを記録
+            if (nodeData.isRoot) {
+                rootNodeId = nodeId;
+            }
         });
+        
+        // デフォルトでメインチャット（ルートノード）を選択
+        if (rootNodeId && !this.selectedNodeId) {
+            this.elements.nodeSelector.value = rootNodeId;
+            this.selectedNodeId = rootNodeId;
+        }
     }
     
     getDescendantNodes(parentId, allNodes) {
@@ -828,8 +858,6 @@ class StreemChat {
     }
     
     refreshListDisplay() {
-        if (!this.isListView) return;
-        
         // 既存の表示をクリア
         this.elements.mindmapCanvas.innerHTML = '';
         this.nodes.clear();
