@@ -12,10 +12,11 @@ class StreemChat {
         this.messageUnsubscribes = new Map();
         this.allMessagesUnsubscribe = null; // 全メッセージの監視用
         this.usedPositions = []; // 使用済み位置を記録
+        this.selectedNodeId = null; // 選択されたノードID
         
         this.initializeElements();
         this.setupEventListeners();
-        this.initializeRootNode();
+        // this.initializeRootNode(); // コンストラクタでは呼ばない
         this.setupViewportFix();
         console.log('StreemChat initialization complete');
     }
@@ -32,7 +33,8 @@ class StreemChat {
             chatMessages: document.getElementById('chat-messages'),
             messageInput: document.getElementById('messageInput'),
             sendBtn: document.getElementById('sendBtn'),
-            branchBtn: document.getElementById('branchBtn')
+            branchBtn: document.getElementById('branchBtn'),
+            nodeSelector: document.getElementById('nodeSelector')
         };
         
         console.log('Username element found:', this.elements.username);
@@ -129,6 +131,11 @@ class StreemChat {
                 this.connect();
             }
         });
+        
+        this.elements.nodeSelector.addEventListener('change', (e) => {
+            this.selectedNodeId = e.target.value || null;
+            this.refreshListDisplay();
+        });
     }
     
     connect() {
@@ -156,9 +163,9 @@ class StreemChat {
         this.elements.connectBtn.disabled = true;
         
         this.cleanupOldNodes();
-        this.initializeRootNode();
-        this.loadNodes();
-        this.loadAllMessages(); // 全メッセージを一括取得
+        this.initializeRootNode(); // 有効化
+        this.loadAllMessages(); // 先にメッセージを読み込む
+        this.loadNodes(); // その後ノードを読み込む
         
         setTimeout(() => {
             this.elements.connectBtn.textContent = '接続済み';
@@ -167,6 +174,7 @@ class StreemChat {
     }
     
     async initializeRootNode() {
+        console.log('initializeRootNode called');
         const db = getDB();
         
         try {
@@ -248,25 +256,22 @@ class StreemChat {
                 allNodes.set(nodeId, nodeData);
             });
             
-            // スマホの場合は階層表示
-            if (window.innerWidth <= 768) {
-                this.elements.mindmapCanvas.innerHTML = '';
-                this.nodes.clear();
-                this.usedPositions = [];
-                
-                // 階層順にノードを作成・配置
-                this.createHierarchicalNodes(allNodes);
-            } else {
-                // PCの場合は従来通り
-                snapshot.forEach((doc) => {
-                    const nodeData = doc.data();
-                    const nodeId = doc.id;
-                    
-                    if (!this.nodes.has(nodeId)) {
-                        this.createNodeElement(nodeId, nodeData);
-                    }
-                });
-            }
+            // ノードセレクタを更新
+            this.updateNodeSelector(allNodes);
+            
+            // ノードデータを保持（分岐機能のため）
+            this.nodes.clear();
+            allNodes.forEach((nodeData, nodeId) => {
+                this.nodes.set(nodeId, { data: nodeData, element: null });
+            });
+            
+            // 表示をクリア
+            this.elements.mindmapCanvas.innerHTML = '';
+            this.usedPositions = [];
+            
+            // 一覧表示のみ
+            this.elements.mindmapCanvas.classList.add('chronological-view');
+            this.createListDisplay(allNodes);
         });
     }
     
@@ -329,153 +334,27 @@ class StreemChat {
                     }
                 });
                 
-                console.log(`Total messages cached: ${Array.from(this.messages.values()).reduce((total, nodeMessages) => total + nodeMessages.size, 0)}`);
+                const totalMessages = Array.from(this.messages.values()).reduce((total, nodeMessages) => total + nodeMessages.size, 0);
+                console.log(`Total messages cached: ${totalMessages}`);
+                
+                // メッセージ読み込み完了後、選択中のノードがあれば表示を更新
+                console.log('Checking if should refresh display, selectedNodeId:', this.selectedNodeId);
+                if (this.selectedNodeId) {
+                    console.log('Refreshing list display after messages loaded');
+                    // 少し遅延させて確実に更新
+                    setTimeout(() => {
+                        this.refreshListDisplay();
+                    }, 100);
+                } else {
+                    console.log('No selectedNodeId, skipping refresh');
+                }
             });
     }
     
-    createNodeElement(nodeId, nodeData) {
-        console.log('Creating node element:', nodeId, nodeData);
-        const nodeElement = document.createElement('div');
-        nodeElement.className = `mindmap-node ${nodeData.isRoot ? 'root' : ''}`;
-        
-        // スマホ対応：画面サイズに応じて位置を調整
-        const containerWidth = this.elements.mindmapCanvas.clientWidth || window.innerWidth;
-        const containerHeight = this.elements.mindmapCanvas.clientHeight || window.innerHeight * 0.6;
-        
-        let x = nodeData.x;
-        let y = nodeData.y;
-        
-        // スマホでは強制的に画面内に配置
-        if (window.innerWidth <= 768) {
-            x = Math.max(20, Math.min(x, containerWidth - 180));
-            y = Math.max(20, Math.min(y, containerHeight - 120));
-        }
-        
-        nodeElement.style.left = `${x}px`;
-        nodeElement.style.top = `${y}px`;
-        nodeElement.dataset.nodeId = nodeId;
-        
-        console.log(`Node positioned at: ${x}, ${y} (container: ${containerWidth}x${containerHeight})`);
-        
-        console.log('スマホ用ノードを作成中:', {nodeId, x, y, containerWidth, containerHeight});
-        
-        // スマホでは重ならない位置で配置
-        if (window.innerWidth <= 768) {
-            const position = this.findNonOverlappingPosition(containerWidth, containerHeight);
-            nodeElement.style.left = position.x + 'px';
-            nodeElement.style.top = position.y + 'px';
-            this.usedPositions.push(position);
-            console.log(`スマホ検出：重ならない位置(${position.x},${position.y})に配置`);
-        }
-        
-        nodeElement.innerHTML = `
-            <h4>${nodeData.title}</h4>
-            <div class="message-count">${nodeData.messageCount || 0} メッセージ</div>
-        `;
-        
-        nodeElement.addEventListener('click', () => this.openChat(nodeId, nodeData.title));
-        
-        this.elements.mindmapCanvas.appendChild(nodeElement);
-        this.nodes.set(nodeId, { element: nodeElement, data: nodeData });
-        
-        if (nodeData.parentId && this.nodes.has(nodeData.parentId)) {
-            this.createConnection(nodeData.parentId, nodeId);
-        }
-        
-        this.makeDraggable(nodeElement, nodeId);
-    }
     
-    makeDraggable(element, nodeId) {
-        let isDragging = false;
-        let startX, startY;
-        
-        element.addEventListener('mousedown', (e) => {
-            if (e.target.tagName === 'BUTTON') return;
-            
-            isDragging = true;
-            startX = e.clientX - element.offsetLeft;
-            startY = e.clientY - element.offsetTop;
-            element.style.zIndex = '1000';
-        });
-        
-        document.addEventListener('mousemove', (e) => {
-            if (!isDragging) return;
-            
-            const newX = e.clientX - startX;
-            const newY = e.clientY - startY;
-            
-            element.style.left = `${newX}px`;
-            element.style.top = `${newY}px`;
-            
-            this.updateConnections(nodeId);
-        });
-        
-        document.addEventListener('mouseup', () => {
-            if (isDragging) {
-                isDragging = false;
-                element.style.zIndex = '10';
-                
-                const nodeData = this.nodes.get(nodeId);
-                if (nodeData) {
-                    nodeData.data.x = parseInt(element.style.left);
-                    nodeData.data.y = parseInt(element.style.top);
-                }
-            }
-        });
-    }
     
-    createConnection(parentId, childId) {
-        const parentNode = this.nodes.get(parentId);
-        const childNode = this.nodes.get(childId);
-        
-        if (!parentNode || !childNode) return;
-        
-        const connection = document.createElement('div');
-        connection.className = 'mindmap-connection';
-        connection.dataset.connection = `${parentId}-${childId}`;
-        
-        this.elements.mindmapCanvas.appendChild(connection);
-        this.connections.set(`${parentId}-${childId}`, connection);
-        
-        this.updateConnection(parentId, childId);
-    }
     
-    updateConnection(parentId, childId) {
-        const connection = this.connections.get(`${parentId}-${childId}`);
-        const parentNode = this.nodes.get(parentId);
-        const childNode = this.nodes.get(childId);
-        
-        if (!connection || !parentNode || !childNode) return;
-        
-        const parentElement = parentNode.element;
-        const childElement = childNode.element;
-        
-        const parentRect = parentElement.getBoundingClientRect();
-        const childRect = childElement.getBoundingClientRect();
-        const canvasRect = this.elements.mindmapCanvas.getBoundingClientRect();
-        
-        const startX = parentRect.left + parentRect.width / 2 - canvasRect.left;
-        const startY = parentRect.top + parentRect.height / 2 - canvasRect.top;
-        const endX = childRect.left + childRect.width / 2 - canvasRect.left;
-        const endY = childRect.top + childRect.height / 2 - canvasRect.top;
-        
-        const length = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
-        const angle = Math.atan2(endY - startY, endX - startX) * 180 / Math.PI;
-        
-        connection.style.left = `${startX}px`;
-        connection.style.top = `${startY}px`;
-        connection.style.width = `${length}px`;
-        connection.style.transform = `rotate(${angle}deg)`;
-    }
     
-    updateConnections(nodeId) {
-        this.connections.forEach((connection, key) => {
-            const [parentId, childId] = key.split('-');
-            if (parentId === nodeId || childId === nodeId) {
-                this.updateConnection(parentId, childId);
-            }
-        });
-    }
     
     openChat(nodeId, title) {
         this.currentNodeId = nodeId;
@@ -487,7 +366,7 @@ class StreemChat {
         });
         
         const activeNode = this.nodes.get(nodeId);
-        if (activeNode) {
+        if (activeNode && activeNode.element) {
             activeNode.element.classList.add('active');
         }
         
@@ -590,7 +469,7 @@ class StreemChat {
     
     updateMessageCount(nodeId) {
         const nodeData = this.nodes.get(nodeId);
-        if (nodeData) {
+        if (nodeData && nodeData.element) {
             // ローカルキャッシュから実際のメッセージ数を取得
             const nodeMessages = this.messages.get(nodeId);
             const totalCount = nodeMessages ? nodeMessages.size : 0;
@@ -613,6 +492,11 @@ class StreemChat {
                 }
             }
             console.log(`Message count updated for ${nodeData.data.title}: ${totalCount} total, ${unreadCount} unread`);
+        } else if (nodeData) {
+            // 要素がない場合はメッセージカウントのみ更新
+            const nodeMessages = this.messages.get(nodeId);
+            const totalCount = nodeMessages ? nodeMessages.size : 0;
+            nodeData.data.messageCount = totalCount;
         }
     }
     
@@ -638,13 +522,28 @@ class StreemChat {
     }
     
     async createBranch() {
-        if (!this.currentUser || !this.currentNodeId) return;
+        console.log('createBranch called');
+        console.log('currentUser:', this.currentUser);
+        console.log('currentNodeId:', this.currentNodeId);
+        
+        if (!this.currentUser || !this.currentNodeId) {
+            console.log('createBranch: Missing currentUser or currentNodeId, returning');
+            return;
+        }
         
         const branchTitle = prompt('新しい話題のタイトルを入力してください:');
-        if (!branchTitle) return;
+        console.log('branchTitle:', branchTitle);
+        if (!branchTitle) {
+            console.log('createBranch: No branch title provided, returning');
+            return;
+        }
         
         const parentNode = this.nodes.get(this.currentNodeId);
-        if (!parentNode) return;
+        console.log('parentNode:', parentNode);
+        if (!parentNode) {
+            console.log('createBranch: Parent node not found, returning');
+            return;
+        }
         
         // 親の階層レベルを取得して+1
         const parentHierarchyLevel = parentNode.data.hierarchyLevel || 0;
@@ -669,8 +568,10 @@ class StreemChat {
                 lastActivity: new Date()
             };
             
-            console.log(`Creating branch: "${branchTitle}" at hierarchy level ${newHierarchyLevel} (parent level: ${parentHierarchyLevel})`);;
+            console.log(`Creating branch: "${branchTitle}" at hierarchy level ${newHierarchyLevel} (parent level: ${parentHierarchyLevel})`);
+            console.log('Branch data:', branchData);
             
+            console.log('Adding branch message to current node...');
             await db.collection('messages').add({
                 nodeId: this.currentNodeId,
                 username: this.currentUser,
@@ -679,7 +580,9 @@ class StreemChat {
                 createdAt: new Date(),
                 isBranchMessage: true
             });
+            console.log('Branch message added successfully');
             
+            console.log('Adding new node to database...');
             const docRef = await db.collection('nodes').add(branchData);
             console.log('Branch created with ID:', docRef.id);
             
@@ -701,6 +604,10 @@ class StreemChat {
     
     
     async cleanupOldNodes() {
+        // Firestoreインデックスエラーを避けるため、cleanup処理を無効化
+        console.log('Cleanup skipped to avoid Firestore index issues');
+        return;
+        
         const db = getDB();
         const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
         
@@ -768,83 +675,104 @@ class StreemChat {
         return { x: gridX, y: gridY };
     }
 
-    createHierarchicalNodes(allNodes) {
-        console.log('Creating hierarchical nodes using hierarchyLevel from DB');
-        
-        // hierarchyLevelでソート（0が最初、1, 2, 3...の順）
-        const sortedNodes = Array.from(allNodes.entries()).sort((a, b) => {
-            const levelA = a[1].hierarchyLevel || 0;
-            const levelB = b[1].hierarchyLevel || 0;
-            if (levelA !== levelB) {
-                return levelA - levelB;  // レベル順
-            }
-            // 同じレベルなら作成日時順
-            const timeA = a[1].createdAt?.toDate?.() || new Date(a[1].createdAt);
-            const timeB = b[1].createdAt?.toDate?.() || new Date(b[1].createdAt);
-            return timeA - timeB;
-        });
-        
-        // ソートされた順序でノードを作成
-        sortedNodes.forEach(([nodeId, nodeData]) => {
-            const hierarchyLevel = nodeData.hierarchyLevel || 0;
-            console.log(`Creating node: "${nodeData.title}" at hierarchy level ${hierarchyLevel}`);
-            this.createHierarchicalNodeElement(nodeId, nodeData, hierarchyLevel);
-        });
-    }
     
-    createChildrenRecursively(parentId, level, allChildNodes) {
-        // 指定された親の直接の子供を見つける
-        const directChildren = allChildNodes.filter(node => node.data.parentId === parentId);
-        
-        // 作成日時順でソート（古い順）
-        directChildren.sort((a, b) => {
-            const aTime = a.data.createdAt?.toDate?.() || new Date(a.data.createdAt);
-            const bTime = b.data.createdAt?.toDate?.() || new Date(b.data.createdAt);
-            return aTime - bTime;
-        });
-        
-        // 直接の子供を作成
-        directChildren.forEach(child => {
-            console.log(`Creating child node at level ${level}:`, child);
-            this.createHierarchicalNodeElement(child.id, child.data, level);
-            
-            // 再帰的に孫以降も作成
-            this.createChildrenRecursively(child.id, level + 1, allChildNodes);
-        });
-    }
     
-    createHierarchicalNodeElement(nodeId, nodeData, level) {
-        const nodeElement = document.createElement('div');
-        nodeElement.className = `mindmap-node ${nodeData.isRoot ? 'root' : ''}`;
-        nodeElement.dataset.nodeId = nodeId;
-        nodeElement.dataset.level = level;
-        
-        // 階層レベルに応じたスタイル設定
-        const indentPx = level * 30;
-        nodeElement.style.marginLeft = `${indentPx}px`;
-        
-        // レベル別の色設定
-        if (level === 0) {
-            nodeElement.style.background = 'linear-gradient(135deg, #28a745 0%, #20c997 100%)';
-            nodeElement.style.color = 'white';
-            nodeElement.style.borderLeft = 'none';
-        } else if (level === 1) {
-            nodeElement.style.background = '#e3f2fd';
-            nodeElement.style.borderLeft = '4px solid #2196f3';
-            nodeElement.style.color = '#333';
-        } else if (level === 2) {
-            nodeElement.style.background = '#fff3e0';
-            nodeElement.style.borderLeft = '4px solid #ff9800';
-            nodeElement.style.color = '#333';
-        } else {
-            nodeElement.style.background = '#f5f5f5';
-            nodeElement.style.borderLeft = '4px solid #666';
-            nodeElement.style.color = '#333';
+    createListDisplay(allNodes) {
+        if (!this.selectedNodeId) {
+            // ノードが選択されていない場合はメッセージを表示
+            this.elements.mindmapCanvas.innerHTML = '<div style="text-align: center; padding: 50px; color: #6c757d; font-size: 1.1rem;">ノードを選択してください</div>';
+            return;
         }
         
+        // 選択されたノードとその配下のノードを取得
+        const descendantNodeIds = this.getDescendantNodes(this.selectedNodeId, allNodes);
+        console.log(`Selected node descendants: ${descendantNodeIds.length} nodes`);
+        
+        // 配下のノードのメッセージを時系列順で表示
+        const filteredMessages = [];
+        
+        descendantNodeIds.forEach(nodeId => {
+            const nodeMessages = this.messages.get(nodeId);
+            if (nodeMessages) {
+                nodeMessages.forEach((messageData, messageId) => {
+                    filteredMessages.push({
+                        type: 'message',
+                        id: messageId,
+                        data: messageData,
+                        createdAt: messageData.createdAt?.toDate?.() || new Date(messageData.createdAt),
+                        nodeId: nodeId
+                    });
+                });
+            }
+        });
+        
+        // 時系列順でソート
+        filteredMessages.sort((a, b) => a.createdAt - b.createdAt);
+        
+        const selectedNodeData = allNodes.get(this.selectedNodeId);
+        const selectedNodeTitle = selectedNodeData ? selectedNodeData.title : 'Unknown';
+        
+        console.log(`Creating list display for "${selectedNodeTitle}" with ${filteredMessages.length} messages from ${descendantNodeIds.length} descendant nodes`);
+        
+        if (filteredMessages.length === 0) {
+            this.elements.mindmapCanvas.innerHTML = `<div style="text-align: center; padding: 50px; color: #6c757d; font-size: 1.1rem;">"${selectedNodeTitle}"とその配下にはメッセージがありません</div>`;
+            return;
+        }
+        
+        // 選択されたノードの情報を表示
+        const headerElement = document.createElement('div');
+        headerElement.style.cssText = `
+            background: linear-gradient(135deg, #007bff 0%, #6c5ce7 100%);
+            color: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+        `;
+        headerElement.innerHTML = `
+            <h3 style="margin: 0; font-size: 1.3rem;">📁 ${selectedNodeTitle}</h3>
+            <div style="margin-top: 8px; opacity: 0.9; font-size: 0.95rem;">
+                配下 ${descendantNodeIds.length} ノードから ${filteredMessages.length} メッセージを表示
+            </div>
+        `;
+        this.elements.mindmapCanvas.appendChild(headerElement);
+        
+        // 時系列順でメッセージのみを表示
+        filteredMessages.forEach((message, index) => {
+            this.createListMessageElement(message.id, message.data, message.nodeId, index, allNodes);
+        });
+    }
+    
+    
+    createListNodeElement(nodeId, nodeData, index) {
+        const nodeElement = document.createElement('div');
+        nodeElement.className = 'chronological-node';
+        nodeElement.dataset.nodeId = nodeId;
+        nodeElement.dataset.index = index;
+        
+        // 時系列表示用のスタイル
+        nodeElement.style.marginBottom = '10px';
+        nodeElement.style.padding = '15px';
+        nodeElement.style.background = nodeData.isRoot 
+            ? 'linear-gradient(135deg, #28a745 0%, #20c997 100%)'
+            : 'linear-gradient(135deg, #007bff 0%, #6c5ce7 100%)';
+        nodeElement.style.color = 'white';
+        nodeElement.style.borderRadius = '10px';
+        nodeElement.style.boxShadow = '0 2px 10px rgba(0, 0, 0, 0.1)';
+        nodeElement.style.cursor = 'pointer';
+        
+        const timestamp = nodeData.createdAt?.toDate?.() 
+            ? new Date(nodeData.createdAt.toDate()).toLocaleString()
+            : new Date(nodeData.createdAt).toLocaleString();
+            
         nodeElement.innerHTML = `
-            <h4>${nodeData.title}</h4>
-            <div class="message-count">${nodeData.messageCount || 0} メッセージ</div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h4 style="margin: 0; font-size: 1.1rem;">📁 ${nodeData.title}</h4>
+                <small style="opacity: 0.8;">${timestamp}</small>
+            </div>
+            <div style="margin-top: 5px; font-size: 0.9rem; opacity: 0.9;">
+                ${nodeData.messageCount || 0} メッセージ | スレッド作成
+            </div>
         `;
         
         nodeElement.addEventListener('click', () => this.openChat(nodeId, nodeData.title));
@@ -852,8 +780,162 @@ class StreemChat {
         this.elements.mindmapCanvas.appendChild(nodeElement);
         this.nodes.set(nodeId, { element: nodeElement, data: nodeData });
         
-        console.log(`✓ Node created: "${nodeData.title}" at level ${level} with ${indentPx}px indent`);
+        console.log(`✓ List node created: "${nodeData.title}" at position ${index}`);
     }
+    
+    createListMessageElement(messageId, messageData, nodeId, index, allNodes) {
+        const messageElement = document.createElement('div');
+        messageElement.className = 'chronological-message';
+        messageElement.dataset.messageId = messageId;
+        messageElement.dataset.nodeId = nodeId;
+        messageElement.dataset.index = index;
+        
+        // 時系列表示用のメッセージスタイル
+        messageElement.style.marginBottom = '10px';
+        messageElement.style.marginLeft = '0px';
+        messageElement.style.padding = '15px';
+        messageElement.style.background = '#ffffff';
+        messageElement.style.border = '1px solid #e9ecef';
+        messageElement.style.borderRadius = '10px';
+        messageElement.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
+        
+        const timestamp = messageData.createdAt?.toDate?.() 
+            ? new Date(messageData.createdAt.toDate()).toLocaleString()
+            : new Date(messageData.createdAt).toLocaleString();
+            
+        // 親ノードの情報を取得
+        const parentNodeEntry = Array.from(allNodes.entries()).find(([id, data]) => id === nodeId);
+        const parentTitle = parentNodeEntry ? parentNodeEntry[1].title : 'Unknown';
+        
+        const displayName = messageData.displayName || messageData.username;
+        
+        messageElement.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                <div style="display: flex; flex-direction: column;">
+                    <strong style="color: #495057; font-size: 0.9rem;">${displayName}</strong>
+                    <small style="color: #6c757d; font-size: 0.8rem;">📁 ${parentTitle}</small>
+                </div>
+                <small style="color: #6c757d;">${timestamp}</small>
+            </div>
+            <div style="color: #333; line-height: 1.4;">${messageData.content}</div>
+        `;
+        
+        // メッセージクリックで該当ノードのチャットを開く
+        messageElement.addEventListener('click', () => {
+            this.openChat(nodeId, parentTitle);
+        });
+        
+        this.elements.mindmapCanvas.appendChild(messageElement);
+        
+        console.log(`✓ List message created: "${messageData.content.substring(0, 30)}..." in node "${parentTitle}"`);
+    }
+    
+    updateNodeSelector(allNodes) {
+        // セレクタのオプションをクリア
+        this.elements.nodeSelector.innerHTML = '';
+        
+        // 階層構造順でソートしてオプションを追加
+        const hierarchicalNodes = this.buildHierarchicalNodeList(allNodes);
+        
+        let rootNodeId = null;
+        hierarchicalNodes.forEach(({ nodeId, nodeData, depth }) => {
+            const option = document.createElement('option');
+            option.value = nodeId;
+            const indent = '　'.repeat(depth);
+            option.textContent = `${indent}${nodeData.title}`;
+            this.elements.nodeSelector.appendChild(option);
+            
+            // ルートノードを記録
+            if (nodeData.isRoot) {
+                rootNodeId = nodeId;
+            }
+        });
+        
+        // デフォルトでメインチャット（ルートノード）を選択
+        if (rootNodeId && !this.selectedNodeId) {
+            this.elements.nodeSelector.value = rootNodeId;
+            this.selectedNodeId = rootNodeId;
+        }
+    }
+    
+    buildHierarchicalNodeList(allNodes) {
+        const result = [];
+        const visited = new Set();
+        
+        // ルートノードから開始
+        const rootNodes = Array.from(allNodes.entries()).filter(([_, nodeData]) => nodeData.isRoot);
+        
+        const addNodeAndChildren = (nodeId, nodeData, depth = 0) => {
+            if (visited.has(nodeId)) return;
+            visited.add(nodeId);
+            
+            result.push({ nodeId, nodeData, depth });
+            
+            // 子ノードを作成日時順でソートして追加
+            const children = Array.from(allNodes.entries())
+                .filter(([_, childData]) => childData.parentId === nodeId)
+                .sort((a, b) => {
+                    const timeA = a[1].createdAt?.toDate?.() || new Date(a[1].createdAt);
+                    const timeB = b[1].createdAt?.toDate?.() || new Date(b[1].createdAt);
+                    return timeA - timeB;
+                });
+            
+            children.forEach(([childId, childData]) => {
+                addNodeAndChildren(childId, childData, depth + 1);
+            });
+        };
+        
+        // ルートノードから階層構造を構築
+        rootNodes.forEach(([nodeId, nodeData]) => {
+            addNodeAndChildren(nodeId, nodeData, 0);
+        });
+        
+        return result;
+    }
+    
+    getDescendantNodes(parentId, allNodes) {
+        const descendants = [];
+        const stack = [parentId];
+        
+        while (stack.length > 0) {
+            const currentId = stack.pop();
+            descendants.push(currentId);
+            
+            // 現在のノードの子ノードを見つけて追加
+            Array.from(allNodes.entries()).forEach(([nodeId, nodeData]) => {
+                if (nodeData.parentId === currentId) {
+                    stack.push(nodeId);
+                }
+            });
+        }
+        
+        return descendants;
+    }
+    
+    refreshListDisplay() {
+        // 既存の表示をクリア
+        this.elements.mindmapCanvas.innerHTML = '';
+        
+        // ノード情報を再取得して表示を更新
+        const db = getDB();
+        db.collection('nodes').get().then((snapshot) => {
+            const allNodes = new Map();
+            snapshot.forEach((doc) => {
+                const nodeData = doc.data();
+                const nodeId = doc.id;
+                allNodes.set(nodeId, nodeData);
+            });
+            
+            // ノードデータを保持（分岐機能のため）
+            this.nodes.clear();
+            allNodes.forEach((nodeData, nodeId) => {
+                this.nodes.set(nodeId, { data: nodeData, element: null });
+            });
+            
+            this.createListDisplay(allNodes);
+        });
+    }
+
 
     setupViewportFix() {
         // スマホのキーボード表示/非表示による画面リサイズ対応
