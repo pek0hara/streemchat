@@ -259,9 +259,14 @@ class StreemChat {
             // ノードセレクタを更新
             this.updateNodeSelector(allNodes);
             
+            // ノードデータを保持（分岐機能のため）
+            this.nodes.clear();
+            allNodes.forEach((nodeData, nodeId) => {
+                this.nodes.set(nodeId, { data: nodeData, element: null });
+            });
+            
             // 表示をクリア
             this.elements.mindmapCanvas.innerHTML = '';
-            this.nodes.clear();
             this.usedPositions = [];
             
             // 一覧表示のみ
@@ -361,7 +366,7 @@ class StreemChat {
         });
         
         const activeNode = this.nodes.get(nodeId);
-        if (activeNode) {
+        if (activeNode && activeNode.element) {
             activeNode.element.classList.add('active');
         }
         
@@ -464,7 +469,7 @@ class StreemChat {
     
     updateMessageCount(nodeId) {
         const nodeData = this.nodes.get(nodeId);
-        if (nodeData) {
+        if (nodeData && nodeData.element) {
             // ローカルキャッシュから実際のメッセージ数を取得
             const nodeMessages = this.messages.get(nodeId);
             const totalCount = nodeMessages ? nodeMessages.size : 0;
@@ -487,6 +492,11 @@ class StreemChat {
                 }
             }
             console.log(`Message count updated for ${nodeData.data.title}: ${totalCount} total, ${unreadCount} unread`);
+        } else if (nodeData) {
+            // 要素がない場合はメッセージカウントのみ更新
+            const nodeMessages = this.messages.get(nodeId);
+            const totalCount = nodeMessages ? nodeMessages.size : 0;
+            nodeData.data.messageCount = totalCount;
         }
     }
     
@@ -512,13 +522,28 @@ class StreemChat {
     }
     
     async createBranch() {
-        if (!this.currentUser || !this.currentNodeId) return;
+        console.log('createBranch called');
+        console.log('currentUser:', this.currentUser);
+        console.log('currentNodeId:', this.currentNodeId);
+        
+        if (!this.currentUser || !this.currentNodeId) {
+            console.log('createBranch: Missing currentUser or currentNodeId, returning');
+            return;
+        }
         
         const branchTitle = prompt('新しい話題のタイトルを入力してください:');
-        if (!branchTitle) return;
+        console.log('branchTitle:', branchTitle);
+        if (!branchTitle) {
+            console.log('createBranch: No branch title provided, returning');
+            return;
+        }
         
         const parentNode = this.nodes.get(this.currentNodeId);
-        if (!parentNode) return;
+        console.log('parentNode:', parentNode);
+        if (!parentNode) {
+            console.log('createBranch: Parent node not found, returning');
+            return;
+        }
         
         // 親の階層レベルを取得して+1
         const parentHierarchyLevel = parentNode.data.hierarchyLevel || 0;
@@ -543,8 +568,10 @@ class StreemChat {
                 lastActivity: new Date()
             };
             
-            console.log(`Creating branch: "${branchTitle}" at hierarchy level ${newHierarchyLevel} (parent level: ${parentHierarchyLevel})`);;
+            console.log(`Creating branch: "${branchTitle}" at hierarchy level ${newHierarchyLevel} (parent level: ${parentHierarchyLevel})`);
+            console.log('Branch data:', branchData);
             
+            console.log('Adding branch message to current node...');
             await db.collection('messages').add({
                 nodeId: this.currentNodeId,
                 username: this.currentUser,
@@ -553,7 +580,9 @@ class StreemChat {
                 createdAt: new Date(),
                 isBranchMessage: true
             });
+            console.log('Branch message added successfully');
             
+            console.log('Adding new node to database...');
             const docRef = await db.collection('nodes').add(branchData);
             console.log('Branch created with ID:', docRef.id);
             
@@ -805,23 +834,14 @@ class StreemChat {
         // セレクタのオプションをクリア
         this.elements.nodeSelector.innerHTML = '';
         
-        // 階層順でソートしてオプションを追加
-        const sortedNodes = Array.from(allNodes.entries()).sort((a, b) => {
-            const levelA = a[1].hierarchyLevel || 0;
-            const levelB = b[1].hierarchyLevel || 0;
-            if (levelA !== levelB) {
-                return levelA - levelB;
-            }
-            const timeA = a[1].createdAt?.toDate?.() || new Date(a[1].createdAt);
-            const timeB = b[1].createdAt?.toDate?.() || new Date(b[1].createdAt);
-            return timeA - timeB;
-        });
+        // 階層構造順でソートしてオプションを追加
+        const hierarchicalNodes = this.buildHierarchicalNodeList(allNodes);
         
         let rootNodeId = null;
-        sortedNodes.forEach(([nodeId, nodeData]) => {
+        hierarchicalNodes.forEach(({ nodeId, nodeData, depth }) => {
             const option = document.createElement('option');
             option.value = nodeId;
-            const indent = '　'.repeat(nodeData.hierarchyLevel || 0);
+            const indent = '　'.repeat(depth);
             option.textContent = `${indent}${nodeData.title}`;
             this.elements.nodeSelector.appendChild(option);
             
@@ -836,6 +856,41 @@ class StreemChat {
             this.elements.nodeSelector.value = rootNodeId;
             this.selectedNodeId = rootNodeId;
         }
+    }
+    
+    buildHierarchicalNodeList(allNodes) {
+        const result = [];
+        const visited = new Set();
+        
+        // ルートノードから開始
+        const rootNodes = Array.from(allNodes.entries()).filter(([_, nodeData]) => nodeData.isRoot);
+        
+        const addNodeAndChildren = (nodeId, nodeData, depth = 0) => {
+            if (visited.has(nodeId)) return;
+            visited.add(nodeId);
+            
+            result.push({ nodeId, nodeData, depth });
+            
+            // 子ノードを作成日時順でソートして追加
+            const children = Array.from(allNodes.entries())
+                .filter(([_, childData]) => childData.parentId === nodeId)
+                .sort((a, b) => {
+                    const timeA = a[1].createdAt?.toDate?.() || new Date(a[1].createdAt);
+                    const timeB = b[1].createdAt?.toDate?.() || new Date(b[1].createdAt);
+                    return timeA - timeB;
+                });
+            
+            children.forEach(([childId, childData]) => {
+                addNodeAndChildren(childId, childData, depth + 1);
+            });
+        };
+        
+        // ルートノードから階層構造を構築
+        rootNodes.forEach(([nodeId, nodeData]) => {
+            addNodeAndChildren(nodeId, nodeData, 0);
+        });
+        
+        return result;
     }
     
     getDescendantNodes(parentId, allNodes) {
@@ -860,7 +915,6 @@ class StreemChat {
     refreshListDisplay() {
         // 既存の表示をクリア
         this.elements.mindmapCanvas.innerHTML = '';
-        this.nodes.clear();
         
         // ノード情報を再取得して表示を更新
         const db = getDB();
@@ -871,6 +925,13 @@ class StreemChat {
                 const nodeId = doc.id;
                 allNodes.set(nodeId, nodeData);
             });
+            
+            // ノードデータを保持（分岐機能のため）
+            this.nodes.clear();
+            allNodes.forEach((nodeData, nodeId) => {
+                this.nodes.set(nodeId, { data: nodeData, element: null });
+            });
+            
             this.createListDisplay(allNodes);
         });
     }
