@@ -12,6 +12,7 @@ class StreemChat {
         this.messageUnsubscribes = new Map();
         this.allMessagesUnsubscribe = null; // 全メッセージの監視用
         this.selectedNodeId = null; // 選択されたノードID
+        this.replyMode = null; // 返信モードの情報 {originalMessage, parentNodeId}
         
         this.initializeElements();
         this.setupEventListeners();
@@ -200,12 +201,43 @@ class StreemChat {
             });
     }
 
-    async showReplyDialog(originalMessage, parentNodeId) {
-        // 返信用のノードを作成して直接チャット画面を開く
-        const replyNodeId = await this.createReplyNode(originalMessage, parentNodeId);
-        if (replyNodeId) {
-            this.openNode(replyNodeId);
-        }
+    showReplyDialog(originalMessage, parentNodeId) {
+        // 返信モードを設定
+        this.replyMode = {
+            originalMessage: originalMessage,
+            parentNodeId: parentNodeId
+        };
+        
+        // チャット画面を返信モード表示に変更
+        const replyTitle = `Re: ${originalMessage.content.substring(0, 20)}...`;
+        this.elements.chatTopic.textContent = replyTitle;
+        this.elements.chatPanel.classList.remove('hidden');
+        
+        // 元のメッセージを直接HTML作成で表示
+        const timestamp = originalMessage.createdAt ? 
+            new Date(originalMessage.createdAt.toDate ? originalMessage.createdAt.toDate() : originalMessage.createdAt).toLocaleTimeString() : 
+            new Date().toLocaleTimeString();
+        
+        const displayName = originalMessage.displayName || originalMessage.username;
+        const parts = displayName.split('#');
+        const username = parts[0];
+        const userId = parts.length > 1 ? parts[1] : '';
+        const usernameHtml = userId ? 
+            `${username}<span class="user-id">#${userId}</span>` : 
+            username;
+        
+        this.elements.chatMessages.innerHTML = `
+            <div class="message-container">
+                <div class="message other">
+                    <div class="username">${usernameHtml}</div>
+                    <div class="content">${originalMessage.content}</div>
+                </div>
+                <div class="message-timestamp">${timestamp}</div>
+            </div>
+        `;
+        
+        this.elements.messageInput.placeholder = "返信を入力...";
+        this.elements.messageInput.focus();
     }
 
     async createReplyNode(originalMessage, parentNodeId) {
@@ -237,12 +269,17 @@ class StreemChat {
             isRoot: false,
             isReply: true,
             originalMessageId: originalMessage.id || 'unknown',
-            originalContent: originalMessage.content
+            originalContent: originalMessage.content,
+            originalAuthor: originalMessage.displayName || originalMessage.username,
+            originalTimestamp: originalMessage.createdAt
         };
         
         try {
             const db = getDB();
             console.log('Creating reply node with data:', newNodeData);
+            console.log('Original message data:', originalMessage);
+            console.log('Original message createdAt:', originalMessage.createdAt);
+            console.log('Original message createdAt type:', typeof originalMessage.createdAt);
             const docRef = await db.collection('nodes').add(newNodeData);
             const newNodeId = docRef.id;
             
@@ -565,6 +602,8 @@ class StreemChat {
                     const nodeMessages = this.messages.get(nodeId);
                     
                     if (change.type === 'added') {
+                        // メッセージデータにIDを追加
+                        messageData.id = messageId;
                         nodeMessages.set(messageId, messageData);
                         console.log(`Message added to node ${nodeId}: ${messageData.content}`);
                         
@@ -617,7 +656,7 @@ class StreemChat {
     
     
     
-    openChat(nodeId, title) {
+    async openChat(nodeId, title) {
         this.currentNodeId = nodeId;
         this.elements.chatTopic.textContent = title;
         this.elements.chatPanel.classList.remove('hidden');
@@ -639,6 +678,25 @@ class StreemChat {
         // チャット表示時に既読マーク
         this.markAsRead(nodeId);
         
+        // 返信ノードの場合は元メッセージを最初に表示
+        if (nodeData && nodeData.data && nodeData.data.isReply) {
+            // 元メッセージを通常のメッセージ形式で表示
+            const originalMessageData = {
+                displayName: nodeData.data.originalAuthor || '不明なユーザー',
+                username: nodeData.data.originalAuthor || '不明なユーザー',
+                content: nodeData.data.originalContent,
+                createdAt: nodeData.data.originalTimestamp || new Date()
+            };
+            
+            this.elements.chatMessages.innerHTML = '';
+            await this.displayMessage(originalMessageData);
+            
+            // 区切り線を追加
+            this.elements.chatMessages.innerHTML += `
+                <hr style="margin: 1rem 0; border: none; border-top: 1px solid rgba(255,255,255,0.2);">
+            `;
+        }
+        
         // ローカルキャッシュからメッセージを表示
         this.loadMessagesFromCache(nodeId);
     }
@@ -646,7 +704,13 @@ class StreemChat {
     loadMessagesFromCache(nodeId) {
         console.log(`Loading messages from cache for node: ${nodeId}`);
         
-        this.elements.chatMessages.innerHTML = '';
+        // 返信ノードでない場合のみHTMLをクリア（返信ノードは既に元メッセージが表示されている）
+        const nodeData = this.nodes.get(nodeId);
+        const isReplyNode = nodeData && nodeData.data && nodeData.data.isReply;
+        
+        if (!isReplyNode) {
+            this.elements.chatMessages.innerHTML = '';
+        }
         
         // ローカルキャッシュからメッセージを取得
         const nodeMessages = this.messages.get(nodeId);
@@ -722,15 +786,38 @@ class StreemChat {
         timestampElement.className = 'message-timestamp';
         timestampElement.textContent = timestamp;
         
-        // 返信数を取得して返信表示ボタンを追加
-        this.addReplyIndicator(messageContainer, messageData, this.currentNodeId);
-        
-        // 返信ボタン（第1階層のnodeでのみ表示）
+        // 返信ボタン（第1階層のnodeでのみ表示、かつ返信が存在しない場合のみ）
         const nodeData = this.nodes.get(this.currentNodeId);
         const isMainChat = nodeData && nodeData.data && nodeData.data.isRoot;
         const hierarchyLevel = nodeData && nodeData.data ? nodeData.data.hierarchyLevel : 0;
         
-        if (!isMainChat && hierarchyLevel === 1) {
+        // このメッセージに対する返信が既に存在するかチェック
+        let hasReply = false;
+        for (const [nodeId, node] of this.nodes.entries()) {
+            if (node.data && 
+                node.data.isReply && 
+                node.data.parentId === this.currentNodeId && 
+                node.data.originalContent === messageData.content) {
+                hasReply = true;
+                break;
+            }
+        }
+        
+        // 返信インジケーターまたは返信ボタンを追加
+        if (hasReply) {
+            // 返信が存在する場合は返信インジケーターを表示
+            this.addReplyIndicator(messageContainer, messageData, this.currentNodeId).then((timestampContainer) => {
+                if (timestampContainer) {
+                    timestampContainer.appendChild(timestampElement);
+                    messageContainer.appendChild(messageElement);
+                    messageContainer.appendChild(timestampContainer);
+                } else {
+                    messageContainer.appendChild(messageElement);
+                    messageContainer.appendChild(timestampElement);
+                }
+            });
+        } else if (!isMainChat && hierarchyLevel === 1) {
+            // 返信が存在しない場合は返信ボタンを表示
             const replyButton = document.createElement('button');
             replyButton.className = 'reply-btn';
             replyButton.innerHTML = '↩️';
@@ -769,10 +856,10 @@ class StreemChat {
             if (!replyNodesSnapshot.empty) {
                 const replyCount = replyNodesSnapshot.size;
                 
-                // 返信表示ボタンを作成
+                // 返信表示ボタンを作成（時刻の上に配置）
                 const replyIndicator = document.createElement('button');
                 replyIndicator.className = 'reply-indicator';
-                replyIndicator.innerHTML = `💬 ${replyCount}件の返信`;
+                replyIndicator.innerHTML = `💬 ${replyCount}件`;
                 replyIndicator.title = '返信を表示';
                 
                 replyIndicator.addEventListener('click', (e) => {
@@ -780,8 +867,12 @@ class StreemChat {
                     this.showRepliesDialog(messageData, replyNodesSnapshot);
                 });
                 
-                // メッセージの下に返信インジケーターを追加
-                messageContainer.appendChild(replyIndicator);
+                // 時刻表示の上に返信インジケーターを配置するコンテナ
+                const timestampContainer = document.createElement('div');
+                timestampContainer.className = 'timestamp-container';
+                timestampContainer.appendChild(replyIndicator);
+                
+                return timestampContainer; // timestampContainerを返す
             }
         } catch (error) {
             console.error('Error checking for replies:', error);
@@ -899,7 +990,16 @@ class StreemChat {
     
     async sendMessage() {
         const content = this.elements.messageInput.value.trim();
-        if (!content || !this.currentUser || !this.currentNodeId) return;
+        if (!content || !this.currentUser) return;
+        
+        // 返信モードの場合
+        if (this.replyMode) {
+            await this.handleReplyMessage(content);
+            return;
+        }
+        
+        // 通常のメッセージ送信
+        if (!this.currentNodeId) return;
         
         const db = getDB();
         
@@ -919,6 +1019,45 @@ class StreemChat {
             
         } catch (error) {
             console.error('Error sending message:', error);
+        }
+    }
+    
+    async handleReplyMessage(content) {
+        if (!this.replyMode) return;
+        
+        // 返信ノードを作成
+        const replyNodeId = await this.createReplyNode(this.replyMode.originalMessage, this.replyMode.parentNodeId);
+        if (!replyNodeId) {
+            alert('返信ノードの作成に失敗しました');
+            return;
+        }
+        
+        // 返信メッセージを新しいノードに送信
+        const db = getDB();
+        try {
+            await db.collection('messages').add({
+                nodeId: replyNodeId,
+                username: this.currentUser,
+                displayName: this.currentDisplayName,
+                content: content,
+                createdAt: new Date()
+            });
+            
+            await this.updateNodeActivity(replyNodeId);
+            
+            // 作成されたノードのチャットを開く
+            const replyTitle = `Re: ${this.replyMode.originalMessage.content.substring(0, 20)}...`;
+            
+            // 返信モードを解除
+            this.replyMode = null;
+            this.elements.messageInput.placeholder = "メッセージを入力...";
+            this.elements.messageInput.value = '';
+            
+            await this.openChat(replyNodeId, replyTitle);
+            
+        } catch (error) {
+            console.error('Error sending reply message:', error);
+            alert('返信の送信に失敗しました');
         }
     }
     

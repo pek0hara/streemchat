@@ -810,9 +810,56 @@ main {
 
 .reply-indicator:hover {
     background: #e9ecef;
-    border-color: #007bff;
     color: #007bff;
     transform: translateY(-1px);
+}
+
+/* 返信コンテキスト表示 */
+.reply-context {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(5px);
+    padding: 1rem;
+    margin: 1rem 0;
+    border-radius: 10px;
+    border-left: 4px solid #667eea;
+}
+
+.reply-to-label {
+    font-size: 0.9rem;
+    color: #667eea;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+}
+
+.original-message {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 0.5rem;
+    border-radius: 5px;
+    margin-bottom: 0.5rem;
+    font-style: italic;
+}
+
+.reply-instruction {
+    font-size: 0.9rem;
+    color: #888;
+    text-align: center;
+}
+
+/* 元メッセージ表示 */
+.original-message-header {
+    opacity: 0.7;
+    border-left: 3px solid #667eea;
+    padding-left: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.original-message-header .message {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.original-message-header .username {
+    color: #667eea;
+    font-weight: bold;
 }
 
 /* 返信モーダル */
