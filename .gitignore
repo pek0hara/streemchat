@@ -1,6 +1,12 @@
 # Firebase configuration (contains API keys and sensitive data)
 firebase-config.js
 
+# Claude Code configuration
+.claude/
+
+# Vercel deployment files
+.vercel/
+
 # Environment variables
 .env
 .env.local
