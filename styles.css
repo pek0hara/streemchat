@@ -763,3 +763,148 @@ main {
     background: #ccc;
     cursor: not-allowed;
 }
+
+/* 時刻表示コンテナ */
+.timestamp-container {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.2rem;
+}
+
+.message-container.own .timestamp-container {
+    align-items: flex-start;
+}
+
+/* 返信ボタンスタイル */
+.reply-btn {
+    background: none;
+    border: none;
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 0.2rem;
+    border-radius: 50%;
+    transition: all 0.3s;
+    opacity: 0.6;
+    line-height: 1;
+}
+
+.reply-btn:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.1);
+    transform: scale(1.1);
+}
+
+/* 返信インジケーター */
+.reply-indicator {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    color: #495057;
+    padding: 0.4rem 0.8rem;
+    margin-top: 0.5rem;
+    border-radius: 15px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.reply-indicator:hover {
+    background: #e9ecef;
+    border-color: #007bff;
+    color: #007bff;
+    transform: translateY(-1px);
+}
+
+/* 返信モーダル */
+.replies-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(5px);
+}
+
+.replies-content {
+    background: white;
+    border-radius: 15px;
+    max-width: 500px;
+    width: 90%;
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    animation: dialogAppear 0.3s ease-out;
+}
+
+.replies-header {
+    padding: 1.5rem;
+    border-bottom: 1px solid #e9ecef;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.replies-header h3 {
+    margin: 0;
+    color: #333;
+    font-size: 1.1rem;
+}
+
+.replies-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #6c757d;
+    padding: 0;
+}
+
+.replies-close:hover {
+    color: #333;
+}
+
+.replies-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem;
+}
+
+.reply-item {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 10px;
+    padding: 1rem;
+    margin-bottom: 0.8rem;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.reply-item:hover {
+    background: #e9ecef;
+    border-color: #007bff;
+    transform: translateY(-1px);
+}
+
+.reply-author {
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 0.3rem;
+    font-size: 0.9rem;
+}
+
+.reply-content {
+    color: #333;
+    margin-bottom: 0.5rem;
+    line-height: 1.4;
+}
+
+.reply-time {
+    font-size: 0.8rem;
+    color: #6c757d;
+}
