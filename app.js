@@ -201,27 +201,23 @@ class StreemChat {
     }
 
     async showReplyDialog(originalMessage, parentNodeId) {
-        try {
-            const replyContent = await this.showCustomDialog(`"${originalMessage.content.substring(0, 30)}..." への返信を入力してください`);
-            if (!replyContent) return;
-
-            await this.createReplyNode(originalMessage, parentNodeId, replyContent);
-        } catch (error) {
-            // キャンセルまたはエラー時は何もしない
-            console.log('Reply cancelled or error:', error);
+        // 返信用のノードを作成して直接チャット画面を開く
+        const replyNodeId = await this.createReplyNode(originalMessage, parentNodeId);
+        if (replyNodeId) {
+            this.openNode(replyNodeId);
         }
     }
 
-    async createReplyNode(originalMessage, parentNodeId, replyContent) {
+    async createReplyNode(originalMessage, parentNodeId) {
         if (!this.currentUser) {
             alert('ユーザーが接続されていません');
-            return;
+            return null;
         }
 
         const parentNode = this.nodes.get(parentNodeId);
         if (!parentNode) {
             alert('親ノードが見つかりません');
-            return;
+            return null;
         }
 
         // 親の階層レベル+1
@@ -235,7 +231,7 @@ class StreemChat {
             title: replyNodeTitle,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             createdBy: this.currentUser,
-            messageCount: 1,
+            messageCount: 0,
             parentId: parentNodeId,
             hierarchyLevel: newHierarchyLevel,
             isRoot: false,
@@ -250,16 +246,6 @@ class StreemChat {
             const docRef = await db.collection('nodes').add(newNodeData);
             const newNodeId = docRef.id;
             
-            // 返信メッセージを新しいnodeに追加
-            await db.collection('messages').add({
-                content: replyContent,
-                username: this.currentUser,
-                displayName: this.currentDisplayName,
-                nodeId: newNodeId,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                isReplyMessage: true
-            });
-            
             console.log('Reply node created with ID:', newNodeId);
             
             // 少し待ってから一覧表示を更新
@@ -267,9 +253,12 @@ class StreemChat {
                 this.refreshListDisplay();
             }, 1000);
             
+            return newNodeId;
+            
         } catch (error) {
             console.error('Error creating reply node:', error);
             alert('返信の作成に失敗しました');
+            return null;
         }
     }
 
