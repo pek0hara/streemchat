@@ -11,7 +11,6 @@ class StreemChat {
         this.readCounts = new Map(); // ノード別既読数をローカル保存
         this.messageUnsubscribes = new Map();
         this.allMessagesUnsubscribe = null; // 全メッセージの監視用
-        this.usedPositions = []; // 使用済み位置を記録
         this.selectedNodeId = null; // 選択されたノードID
         
         this.initializeElements();
@@ -34,7 +33,6 @@ class StreemChat {
             chatMessages: document.getElementById('chat-messages'),
             messageInput: document.getElementById('messageInput'),
             sendBtn: document.getElementById('sendBtn'),
-            branchBtn: document.getElementById('branchBtn'),
             nodeSelector: document.getElementById('nodeSelector')
         };
         
@@ -120,7 +118,6 @@ class StreemChat {
         this.elements.closeChatBtn.addEventListener('click', () => this.closeChat());
         this.elements.renameChatBtn.addEventListener('click', () => this.renameChat());
         this.elements.sendBtn.addEventListener('click', () => this.sendMessage());
-        this.elements.branchBtn.addEventListener('click', () => this.createBranch());
         
         this.elements.messageInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
@@ -136,6 +133,14 @@ class StreemChat {
         
         this.elements.nodeSelector.addEventListener('change', (e) => {
             const nodeId = e.target.value;
+
+            // If create new option is selected
+            if (nodeId === 'CREATE_NEW') {
+                this.showCreateNodeDialog();
+                // Reset selector to previous selection
+                e.target.value = '';
+                return;
+            }
 
             // If a real node is selected
             if (nodeId) {
@@ -164,6 +169,89 @@ class StreemChat {
                 this.refreshListDisplay();
             }
         });
+    }
+
+    showCreateNodeDialog() {
+        const nodeTitle = prompt('新しい話題のタイトルを入力してください:');
+        if (!nodeTitle) {
+            return;
+        }
+
+        // 現在選択されているノードを親として使用、なければルートノードを使用
+        let parentNodeId = this.selectedNodeId;
+        if (!parentNodeId) {
+            // ルートノードを見つける
+            for (const [id, node] of this.nodes.entries()) {
+                if (node.data.isRoot) {
+                    parentNodeId = id;
+                    break;
+                }
+            }
+        }
+
+        if (!parentNodeId) {
+            alert('親ノードが見つかりません');
+            return;
+        }
+
+        this.createNewNode(nodeTitle, parentNodeId);
+    }
+
+    async createNewNode(title, parentNodeId) {
+        if (!this.currentUser) {
+            alert('ユーザーが接続されていません');
+            return;
+        }
+
+        const parentNode = this.nodes.get(parentNodeId);
+        if (!parentNode) {
+            alert('親ノードが見つかりません');
+            return;
+        }
+
+        // 親の階層レベルを取得して+1
+        const parentHierarchyLevel = parentNode.data.hierarchyLevel || 0;
+        const newHierarchyLevel = parentHierarchyLevel + 1;
+        
+        const newNodeData = {
+            title: title,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            createdBy: this.currentUser,
+            messageCount: 1,
+            parentId: parentNodeId,
+            hierarchyLevel: newHierarchyLevel,
+            isRoot: false
+        };
+        
+        try {
+            const db = getDB();
+            console.log('Creating new node with data:', newNodeData);
+            const docRef = await db.collection('nodes').add(newNodeData);
+            const newNodeId = docRef.id;
+            
+            // 新しいnodeに初期メッセージを追加
+            await db.collection('messages').add({
+                content: `新しい話題「${title}」を作成しました`,
+                username: this.currentUser,
+                displayName: this.currentDisplayName,
+                nodeId: newNodeId,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            
+            console.log('New node created with ID:', newNodeId);
+            
+            // 作成したノードを選択してチャットを開く
+            setTimeout(() => {
+                this.selectedNodeId = newNodeId;
+                this.elements.nodeSelector.value = newNodeId;
+                this.openChat(newNodeId, title);
+                this.refreshListDisplay();
+            }, 1000);
+            
+        } catch (error) {
+            console.error('Error creating node:', error);
+            alert('ノード作成に失敗しました');
+        }
     }
     
     connect() {
@@ -306,7 +394,6 @@ class StreemChat {
             
             // 表示をクリア
             this.elements.mindmapCanvas.innerHTML = '';
-            this.usedPositions = [];
             
             // 一覧表示のみ
             this.elements.mindmapCanvas.classList.add('chronological-view');
@@ -613,18 +700,11 @@ class StreemChat {
         const parentHierarchyLevel = parentNode.data.hierarchyLevel || 0;
         const newHierarchyLevel = parentHierarchyLevel + 1;
         
-        const angle = Math.random() * 2 * Math.PI;
-        const distance = 200;
-        const newX = parentNode.data.x + Math.cos(angle) * distance;
-        const newY = parentNode.data.y + Math.sin(angle) * distance;
-        
         const db = getDB();
         
         try {
             const branchData = {
                 title: branchTitle,
-                x: Math.max(50, Math.min(newX, window.innerWidth - 250)),
-                y: Math.max(50, Math.min(newY, window.innerHeight - 150)),
                 parentId: this.currentNodeId,
                 hierarchyLevel: newHierarchyLevel,
                 isRoot: false,
@@ -739,44 +819,6 @@ class StreemChat {
         }
     }
 
-    findNonOverlappingPosition(containerWidth, containerHeight) {
-        const nodeWidth = 180;
-        const nodeHeight = 120;
-        const margin = 20;
-        
-        let attempts = 0;
-        const maxAttempts = 50;
-        
-        while (attempts < maxAttempts) {
-            const x = Math.floor(Math.random() * (containerWidth - nodeWidth - margin * 2)) + margin;
-            const y = Math.floor(Math.random() * (containerHeight - nodeHeight - margin * 2)) + margin;
-            
-            // 既存の位置と重ならないかチェック
-            let overlapping = false;
-            for (const usedPos of this.usedPositions) {
-                const dx = Math.abs(x - usedPos.x);
-                const dy = Math.abs(y - usedPos.y);
-                
-                if (dx < nodeWidth + margin && dy < nodeHeight + margin) {
-                    overlapping = true;
-                    break;
-                }
-            }
-            
-            if (!overlapping) {
-                return { x, y };
-            }
-            
-            attempts++;
-        }
-        
-        // 重ならない位置が見つからない場合はグリッド配置
-        const gridSize = Math.ceil(Math.sqrt(this.usedPositions.length + 1));
-        const gridX = (this.usedPositions.length % gridSize) * (nodeWidth + margin) + margin;
-        const gridY = Math.floor(this.usedPositions.length / gridSize) * (nodeHeight + margin) + margin;
-        
-        return { x: gridX, y: gridY };
-    }
 
     
     
@@ -936,6 +978,14 @@ class StreemChat {
         placeholder.textContent = '---';
         placeholder.selected = true;
         this.elements.nodeSelector.appendChild(placeholder);
+        
+        // 新規node作成オプションを追加
+        const createOption = document.createElement('option');
+        createOption.value = 'CREATE_NEW';
+        createOption.textContent = '＋ 新しい話題を作成';
+        createOption.style.fontWeight = 'bold';
+        createOption.style.color = '#28a745';
+        this.elements.nodeSelector.appendChild(createOption);
         
         // 階層構造順でソートしてオプションを追加
         const hierarchicalNodes = this.buildHierarchicalNodeList(allNodes);

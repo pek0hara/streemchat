@@ -406,14 +406,6 @@ main {
     background: #0056b3;
 }
 
-#branchBtn {
-    background: #28a745;
-    color: white;
-}
-
-#branchBtn:hover {
-    background: #1e7e34;
-}
 
 .mindmap-node.root {
     background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
