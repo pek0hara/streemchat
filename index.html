@@ -44,6 +44,18 @@
         </main>
     </div>
 
+    <!-- カスタムダイアログ -->
+    <div id="customDialog" class="dialog-overlay" style="display: none;">
+        <div class="dialog-content">
+            <h3>新しい話題を作成</h3>
+            <input type="text" id="dialogInput" placeholder="話題のタイトルを入力してください" />
+            <div class="dialog-buttons">
+                <button id="dialogCancel" class="dialog-btn cancel">キャンセル</button>
+                <button id="dialogOk" class="dialog-btn ok">作成</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>

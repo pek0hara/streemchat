@@ -172,29 +172,102 @@ class StreemChat {
     }
 
     showCreateNodeDialog() {
-        const nodeTitle = prompt('新しい話題のタイトルを入力してください:');
-        if (!nodeTitle) {
-            return;
-        }
+        this.showCustomDialog('新しい話題のタイトルを入力してください:')
+            .then(nodeTitle => {
+                if (!nodeTitle) return;
 
-        // 現在選択されているノードを親として使用、なければルートノードを使用
-        let parentNodeId = this.selectedNodeId;
-        if (!parentNodeId) {
-            // ルートノードを見つける
-            for (const [id, node] of this.nodes.entries()) {
-                if (node.data.isRoot) {
-                    parentNodeId = id;
-                    break;
+                // 現在選択されているノードを親として使用、なければルートノードを使用
+                let parentNodeId = this.selectedNodeId;
+                if (!parentNodeId) {
+                    // ルートノードを見つける
+                    for (const [id, node] of this.nodes.entries()) {
+                        if (node.data.isRoot) {
+                            parentNodeId = id;
+                            break;
+                        }
+                    }
                 }
-            }
-        }
 
-        if (!parentNodeId) {
-            alert('親ノードが見つかりません');
-            return;
-        }
+                if (!parentNodeId) {
+                    alert('親ノードが見つかりません');
+                    return;
+                }
 
-        this.createNewNode(nodeTitle, parentNodeId);
+                this.createNewNode(nodeTitle, parentNodeId);
+            })
+            .catch(() => {
+                // キャンセル時は何もしない
+            });
+    }
+
+    showCustomDialog(placeholder = '') {
+        return new Promise((resolve, reject) => {
+            const overlay = document.getElementById('customDialog');
+            const input = document.getElementById('dialogInput');
+            const cancelBtn = document.getElementById('dialogCancel');
+            const okBtn = document.getElementById('dialogOk');
+
+            // 入力欄の設定
+            input.value = '';
+            input.placeholder = placeholder;
+            
+            // ダイアログを表示
+            overlay.style.display = 'flex';
+            
+            // 入力欄にフォーカス
+            setTimeout(() => input.focus(), 100);
+
+            // ボタンの状態管理
+            const updateOkButton = () => {
+                const hasValue = input.value.trim().length > 0;
+                okBtn.disabled = !hasValue;
+            };
+
+            input.addEventListener('input', updateOkButton);
+            updateOkButton(); // 初期状態
+
+            // イベントリスナー
+            const cleanup = () => {
+                overlay.style.display = 'none';
+                input.removeEventListener('input', updateOkButton);
+                cancelBtn.removeEventListener('click', onCancel);
+                okBtn.removeEventListener('click', onOk);
+                input.removeEventListener('keypress', onKeyPress);
+                overlay.removeEventListener('click', onOverlayClick);
+            };
+
+            const onCancel = () => {
+                cleanup();
+                reject();
+            };
+
+            const onOk = () => {
+                const value = input.value.trim();
+                if (value) {
+                    cleanup();
+                    resolve(value);
+                }
+            };
+
+            const onKeyPress = (e) => {
+                if (e.key === 'Enter' && input.value.trim()) {
+                    onOk();
+                } else if (e.key === 'Escape') {
+                    onCancel();
+                }
+            };
+
+            const onOverlayClick = (e) => {
+                if (e.target === overlay) {
+                    onCancel();
+                }
+            };
+
+            cancelBtn.addEventListener('click', onCancel);
+            okBtn.addEventListener('click', onOk);
+            input.addEventListener('keypress', onKeyPress);
+            overlay.addEventListener('click', onOverlayClick);
+        });
     }
 
     async createNewNode(title, parentNodeId) {
