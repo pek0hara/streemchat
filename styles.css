@@ -373,6 +373,19 @@ main {
     color: #6c757d;
 }
 
+/* メッセージ内のリンク */
+.message-link {
+    color: #4a9eff;
+    text-decoration: underline;
+    word-break: break-all;
+    transition: color 0.3s;
+}
+
+.message-link:hover {
+    color: #357abd;
+    text-decoration: none;
+}
+
 .message .content {
     font-size: 0.9rem;
     line-height: 1.4;
@@ -418,6 +431,19 @@ main {
 
 #sendBtn:hover {
     background: #0056b3;
+}
+
+.char-counter {
+    font-size: 0.7rem;
+    color: #6c757d;
+    margin-left: 0.5rem;
+    min-width: 40px;
+    text-align: right;
+}
+
+.char-counter.over-limit {
+    color: #dc3545;
+    font-weight: bold;
 }
 
 

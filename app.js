@@ -34,7 +34,8 @@ class StreemChat {
             chatMessages: document.getElementById('chat-messages'),
             messageInput: document.getElementById('messageInput'),
             sendBtn: document.getElementById('sendBtn'),
-            nodeSelector: document.getElementById('nodeSelector')
+            nodeSelector: document.getElementById('nodeSelector'),
+            charCounter: document.getElementById('charCounter')
         };
         
         console.log('Username element found:', this.elements.username);
@@ -124,6 +125,11 @@ class StreemChat {
             if (e.key === 'Enter') {
                 this.sendMessage();
             }
+        });
+
+        // 文字数カウンターのイベントリスナー
+        this.elements.messageInput.addEventListener('input', () => {
+            this.updateCharCounter();
         });
         
         this.elements.username.addEventListener('keypress', (e) => {
@@ -776,9 +782,12 @@ class StreemChat {
         const messageContainer = document.createElement('div');
         messageContainer.className = `message-container ${isOwnMessage ? 'own' : ''}`;
         
+        // メッセージ内のURLをリンクに変換
+        const linkedContent = this.linkifyUrls(messageData.content);
+        
         messageElement.innerHTML = `
             <div class="username">${usernameHtml}</div>
-            <div class="content">${messageData.content}</div>
+            <div class="content">${linkedContent}</div>
         `;
         
         // 時刻表示を外側に配置
@@ -841,6 +850,46 @@ class StreemChat {
         }
         
         this.elements.chatMessages.appendChild(messageContainer);
+    }
+    
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    linkifyUrls(text) {
+        // まずHTMLエスケープ
+        const escapedText = this.escapeHtml(text);
+        
+        // URL正規表現（http/https、www付き、一般的なドメインをサポート）
+        const urlRegex = /(https?:\/\/[^\s<>&"']+|www\.[^\s<>&"']+|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]*\.[a-zA-Z]{2,}[^\s<>&"']*)/g;
+        
+        return escapedText.replace(urlRegex, (url) => {
+            let href = url;
+            
+            // プロトコルがない場合はhttpsを追加
+            if (!url.match(/^https?:\/\//)) {
+                href = 'https://' + url;
+            }
+            
+            // URLもエスケープして安全にする
+            const safeHref = this.escapeHtml(href);
+            const safeUrl = this.escapeHtml(url);
+            
+            return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer" class="message-link">${safeUrl}</a>`;
+        });
+    }
+
+    updateCharCounter() {
+        const currentLength = this.elements.messageInput.value.length;
+        this.elements.charCounter.textContent = `${currentLength}/100`;
+        
+        if (currentLength > 100) {
+            this.elements.charCounter.classList.add('over-limit');
+        } else {
+            this.elements.charCounter.classList.remove('over-limit');
+        }
     }
 
     async addReplyIndicator(messageContainer, messageData, currentNodeId) {
@@ -991,6 +1040,12 @@ class StreemChat {
     async sendMessage() {
         const content = this.elements.messageInput.value.trim();
         if (!content || !this.currentUser) return;
+        
+        // 文字数制限チェック（日本語で100文字まで）
+        if (content.length > 100) {
+            alert(`メッセージは100文字以内で入力してください。現在：${content.length}文字`);
+            return;
+        }
         
         // 返信モードの場合
         if (this.replyMode) {
