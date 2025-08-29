@@ -1458,13 +1458,13 @@ class StreemChat {
             
             result.push({ nodeId, nodeData, depth });
             
-            // 子ノードを作成日時順でソートして追加
+            // 子ノードを最終活動日時順でソートして追加（最近活動があったものが上）
             const children = Array.from(allNodes.entries())
                 .filter(([_, childData]) => childData.parentId === nodeId)
                 .sort((a, b) => {
-                    const timeA = a[1].createdAt?.toDate?.() || new Date(a[1].createdAt);
-                    const timeB = b[1].createdAt?.toDate?.() || new Date(b[1].createdAt);
-                    return timeA - timeB;
+                    const timeA = a[1].lastActivity?.toDate?.() || new Date(a[1].lastActivity || a[1].createdAt?.toDate?.() || a[1].createdAt);
+                    const timeB = b[1].lastActivity?.toDate?.() || new Date(b[1].lastActivity || b[1].createdAt?.toDate?.() || b[1].createdAt);
+                    return timeB - timeA; // 降順（最近活動があったものが上）
                 });
             
             children.forEach(([childId, childData]) => {
