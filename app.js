@@ -380,50 +380,15 @@ class StreemChat {
             
             if (!existingRootNodes.empty) {
                 console.log(`Found ${existingRootNodes.size} root nodes`);
-                
-                // 複数ある場合は古いものを削除（createdAtで並び替え）
-                const docs = existingRootNodes.docs.sort((a, b) => {
-                    const aTime = a.data().createdAt?.toDate?.() || new Date(a.data().createdAt);
-                    const bTime = b.data().createdAt?.toDate?.() || new Date(b.data().createdAt);
-                    return bTime - aTime; // 降順
-                });
-                
-                for (let i = 1; i < docs.length; i++) {
-                    const oldNodeId = docs[i].id;
-                    console.log(`Deleting duplicate root node: ${oldNodeId}`);
-                    
-                    // 古いルートノードのメッセージも削除
-                    const messagesSnapshot = await db.collection('messages')
-                        .where('nodeId', '==', oldNodeId)
-                        .get();
-                    
-                    messagesSnapshot.forEach(messageDoc => {
-                        messageDoc.ref.delete();
-                    });
-                    
-                    // 古いノード削除
-                    docs[i].ref.delete();
-                }
-                
-                console.log('Root node cleanup completed, kept the latest one');
+                console.log('Root node already exists, skipping creation');
                 return;
             }
             
             // ルートノードが存在しない場合は作成
             console.log('No root node found, creating new one...');
             
-            // スマホ対応：画面サイズに応じた初期位置
-            const containerWidth = window.innerWidth;
-            const containerHeight = window.innerHeight * 0.6;
-            const centerX = Math.max(50, (containerWidth - 200) / 2);
-            const centerY = Math.max(50, (containerHeight - 100) / 2);
-            
-            console.log('Creating root node at:', {centerX, centerY, containerWidth, containerHeight});
-            
             const rootNodeData = {
                 title: 'メインチャット',
-                x: centerX,
-                y: centerY,
                 isRoot: true,
                 parentId: null,
                 hierarchyLevel: 0,
@@ -1300,8 +1265,6 @@ class StreemChat {
             console.log('Creating new root node...');
             const rootNodeData = {
                 title: 'メインチャット',
-                x: Math.max(50, (window.innerWidth - 200) / 2),
-                y: Math.max(50, (window.innerHeight * 0.6 - 100) / 2),
                 isRoot: true,
                 parentId: null,
                 hierarchyLevel: 0,
