@@ -182,20 +182,17 @@ class StreemChat {
             .then(nodeTitle => {
                 if (!nodeTitle) return;
 
-                // 現在選択されているノードを親として使用、なければルートノードを使用
-                let parentNodeId = this.selectedNodeId;
-                if (!parentNodeId) {
-                    // ルートノードを見つける
-                    for (const [id, node] of this.nodes.entries()) {
-                        if (node.data.isRoot) {
-                            parentNodeId = id;
-                            break;
-                        }
+                // 新しい話題は常にメインチャット（ルートノード）から分岐
+                let parentNodeId = null;
+                for (const [id, node] of this.nodes.entries()) {
+                    if (node.data.isRoot) {
+                        parentNodeId = id;
+                        break;
                     }
                 }
 
                 if (!parentNodeId) {
-                    alert('親ノードが見つかりません');
+                    alert('メインチャットが見つかりません');
                     return;
                 }
 
