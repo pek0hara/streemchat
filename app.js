@@ -715,6 +715,11 @@ class StreemChat {
             await this.updateNodeActivity(this.currentNodeId);
             
             this.elements.messageInput.value = '';
+            
+            // 文字数カウンターをリセット
+            this.elements.charCounter.textContent = '0/100';
+            this.elements.charCounter.classList.remove('over-limit');
+            
             // メッセージカウントは全体監視のloadAllMessages()で自動更新される
             
         } catch (error) {
